@@ -1,0 +1,1812 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#0C0C14">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Undercover">
+
+  <!-- Manifest (Android) -->
+  <link rel="manifest" href="./manifest.json">
+
+  <!-- iOS icons — apple-touch-icon is what Safari actually uses -->
+  <link rel="apple-touch-icon" href="./icons/icon-180.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="./icons/icon-180.png">
+  <link rel="apple-touch-icon" sizes="167x167" href="./icons/icon-167.png">
+  <link rel="apple-touch-icon" sizes="152x152" href="./icons/icon-152.png">
+  <link rel="apple-touch-icon" sizes="144x144" href="./icons/icon-144.png">
+  <link rel="apple-touch-icon" sizes="120x120" href="./icons/icon-120.png">
+  <link rel="apple-touch-icon" sizes="114x114" href="./icons/icon-114.png">
+  <link rel="apple-touch-icon" sizes="76x76" href="./icons/icon-76.png">
+  <link rel="apple-touch-icon" sizes="72x72" href="./icons/icon-72.png">
+  <link rel="apple-touch-icon" sizes="60x60" href="./icons/icon-60.png">
+  <link rel="apple-touch-icon" sizes="57x57" href="./icons/icon-57.png">
+
+  <!-- Favicon (browser tab) -->
+  <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="./icons/icon-57.png">
+  <title>Undercover</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800;900&family=Space+Mono:wght@400;700&family=Sora:wght@400;600;700;800&display=swap');
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body, #root { min-height: 100vh; min-height: 100dvh; }
+    body {
+      background: #0C0C14;
+      font-family: 'Outfit', sans-serif;
+      -webkit-font-smoothing: antialiased;
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    input, button { user-select: auto; -webkit-user-select: auto; touch-action: manipulation; }
+    input::placeholder { color: #555570; }
+    #splash {
+      position: fixed; inset: 0; z-index: 9999;
+      background: #0C0C14; display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      transition: opacity .5s ease;
+    }
+    #splash.hide { opacity: 0; pointer-events: none; }
+    #splash .emoji { font-size: 64px; animation: splashPulse 1.5s infinite; }
+    #splash .text { color: #6C5CE7; font-family: 'Sora', sans-serif; font-size: 28px; font-weight: 900; margin-top: 12px; }
+    #splash .sub { color: #555570; font-size: 13px; margin-top: 8px; }
+    @keyframes splashPulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.1); } }
+  </style>
+</head>
+<body>
+  <div id="splash">
+    <div class="emoji">🕵️</div>
+    <div class="text">UNDERCOVER</div>
+    <div class="sub">Chargement...</div>
+  </div>
+  <div id="root"></div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.26.2/babel.min.js"></script>
+
+  <script type="text/babel" data-type="module">
+    const { useState, useEffect, useRef } = React;
+
+// ─── EMOJI CATEGORIES ────────────────────────────────────────
+const EMOJI_CATEGORIES = {
+  personnes: {
+    label: "Personnes",
+    icon: "😎",
+    emojis: [
+      "😎","🤠","🥳","😏","🤓","😈","🥸","🤩","😇","🧑‍🎤",
+      "🧑‍🚀","🧑‍🍳","🧙","🧛","🧟","🧜","🦸","🥷","👸","🤴",
+      "👩‍🎤","👨‍🎤","🧑‍💻","🧑‍🎨","👻","🤖","👽","💀","🎃","🤡",
+    ],
+  },
+  animaux: {
+    label: "Animaux",
+    icon: "🦊",
+    emojis: [
+      "🦊","🐱","🐶","🐸","🦄","🐼","🦁","🐧","🐙","🦋",
+      "🐺","🦈","🐯","🐰","🐻","🦉","🐵","🦎","🐲","🦩",
+      "🐮","🐷","🐔","🐴","🦭","🐳","🦚","🦜","🐊","🦖",
+    ],
+  },
+  fruits: {
+    label: "Fruits",
+    icon: "🍕",
+    emojis: [
+      "🍎","🍊","🍋","🍇","🍓","🍑","🍒","🥝","🍌","🍉",
+      "🥭","🍍","🫐","🥥","🍐","🌶️","🍄","🌸","⭐","🔥",
+      "💎","🎯","🎸","🎮","⚡","🌈","🍀","🎭","🎪","🧊",
+    ],
+  },
+};
+
+// ─── WORD DATABASE v2 — Weighted, balanced, curated ─────────
+// Each pair: [word1, word2, weight]
+// weight: 3=universal/fun, 2=good, 1=niche
+const WORD_DB = {
+  nourriture: {
+    facile: [
+      ["Pizza","Sushi",3],["Chocolat","Bonbon",3],["Pomme","Banane",3],
+      ["Croissant","Pain au chocolat",3],["Steak","Poulet rôti",2],
+      ["Glace","Sorbet",2],["Frites","Chips",3],["Hamburger","Hot-dog",3],
+      ["Salade","Soupe",2],["Crêpe","Gaufre",3],["Fromage","Beurre",2],
+      ["Pâtes","Riz",3],["Gâteau","Tarte",2],["Saucisson","Jambon",2],
+      ["Jus d'orange","Limonade",2],["Omelette","Œuf au plat",3],
+    ],
+    moyen: [
+      ["Raclette","Fondue",3],["Croissant","Brioche",3],["Brownie","Cookie",3],
+      ["Guacamole","Houmous",2],["Pancake","Crêpe",3],["Risotto","Paella",2],
+      ["Macaron","Meringue",2],["Tiramisu","Panna cotta",2],
+      ["Café","Thé",3],["Kebab","Shawarma",3],["Nuggets","Beignets de poulet",3],
+      ["Milkshake","Smoothie",3],["Tartare","Carpaccio",2],
+      ["Muffin","Cupcake",3],["Granola","Muesli",2],["Nachos","Tacos",3],
+    ],
+    difficile: [
+      ["Cappuccino","Latte",3],["Mozzarella","Burrata",2],
+      ["Wasabi","Moutarde",2],["Pesto","Pistou",2],
+      ["Mascarpone","Ricotta",2],["Paprika","Piment d'Espelette",2],
+      ["Bouillon","Consommé",1],["Naan","Pita",2],
+      ["Prosciutto","Jambon cru",2],["Miso","Sauce soja",2],
+      ["Biscuit","Sablé",3],["Compote","Confiture",3],
+    ],
+  },
+  jeux_video: {
+    facile: [
+      ["Mario","Sonic",3],["Minecraft","Roblox",3],["FIFA","PES",3],
+      ["Fortnite","PUBG",3],["Zelda","Skyrim",2],["Tetris","Puyo Puyo",2],
+      ["GTA","Saints Row",2],["Call of Duty","Battlefield",3],
+      ["Pokemon","Digimon",3],["Mario Kart","Crash Team Racing",2],
+      ["Wii Sports","Ring Fit",2],["Angry Birds","Fruit Ninja",3],
+      ["Candy Crush","Bejeweled",2],["The Sims","Animal Crossing",2],
+      ["Clash Royale","Clash of Clans",3],
+    ],
+    moyen: [
+      ["Overwatch","Valorant",3],["Dark Souls","Elden Ring",2],
+      ["Resident Evil","Silent Hill",2],["God of War","Devil May Cry",2],
+      ["Among Us","Town of Salem",2],["League of Legends","Dota 2",3],
+      ["Assassin's Creed","Prince of Persia",2],
+      ["Rocket League","Mario Kart",3],["Apex Legends","Warzone",3],
+      ["Fall Guys","Gang Beasts",3],["Terraria","Starbound",2],
+      ["Ratchet & Clank","Jak and Daxter",1],
+      ["Red Dead Redemption","GTA",2],["Horizon","Far Cry",2],
+      ["Smash Bros","Brawlhalla",2],
+    ],
+    difficile: [
+      ["Sekiro","Nioh",2],["Spelunky","Noita",1],
+      ["Factorio","Satisfactory",2],["Outer Wilds","No Man's Sky",2],
+      ["Slay the Spire","Monster Train",1],["Inside","Limbo",2],
+      ["Hades","Dead Cells",2],["Celeste","Hollow Knight",2],
+      ["Stardew Valley","Harvest Moon",2],["Diablo","Path of Exile",2],
+      ["Portal","Superliminal",2],["Subnautica","Raft",2],
+    ],
+  },
+  films_series: {
+    facile: [
+      ["Star Wars","Star Trek",3],["Batman","Spider-Man",3],
+      ["Friends","How I Met Your Mother",3],["Harry Potter","Le Seigneur des Anneaux",3],
+      ["Breaking Bad","Narcos",2],["James Bond","Mission Impossible",3],
+      ["Matrix","Inception",2],["Titanic","Pearl Harbor",2],
+      ["Walking Dead","Stranger Things",2],["Avengers","Justice League",3],
+      ["Shrek","Madagascar",3],["Toy Story","Monstres et Cie",3],
+      ["Fast & Furious","Need for Speed",2],["Le Roi Lion","Le Livre de la Jungle",3],
+      ["Netflix","Disney+",3],
+    ],
+    moyen: [
+      ["Stranger Things","Dark",2],["The Office","Parks and Recreation",2],
+      ["Interstellar","Gravity",2],["Peaky Blinders","Boardwalk Empire",1],
+      ["La Casa de Papel","Ocean's Eleven",3],["Black Mirror","Twilight Zone",2],
+      ["Squid Game","Alice in Borderland",3],["Naruto","Dragon Ball",3],
+      ["Game of Thrones","Vikings",3],["Casa de Papel","Braqueurs",2],
+      ["Les Tuche","Camping",3],["Lupin","Gentleman cambrioleur",2],
+      ["John Wick","Jason Bourne",3],["OSS 117","Austin Powers",2],
+      ["Dark Vador","Thanos",2],
+    ],
+    difficile: [
+      ["Memento","Tenet",2],["Whiplash","Black Swan",2],
+      ["Prisoners","Zodiac",1],["Shutter Island","Gone Girl",2],
+      ["Parasite","Us",2],["Fight Club","Mr Robot",2],
+      ["Mulholland Drive","Lost Highway",1],["Seven","Silence des agneaux",2],
+      ["Her","Ex Machina",2],["Joker","Taxi Driver",2],
+      ["Blade Runner","Minority Report",2],["Truman Show","Matrix",2],
+    ],
+  },
+  sport: {
+    facile: [
+      ["Football","Rugby",3],["Tennis","Badminton",3],["Basketball","Handball",3],
+      ["Natation","Plongée",2],["Ski","Snowboard",3],["Boxe","MMA",3],
+      ["Marathon","Sprint",2],["Surf","Paddle",3],["Judo","Karaté",3],
+      ["Roller","Skateboard",3],["Danse","Gymnastique",2],["Golf","Mini-golf",3],
+      ["BMX","VTT",2],["Yoga","Pilates",2],["Pétanque","Bowling",3],
+    ],
+    moyen: [
+      ["Volley","Beach-volley",3],["Escalade","Alpinisme",2],
+      ["Ping-pong","Squash",2],["CrossFit","Musculation",3],
+      ["Triathlon","Décathlon",2],["Parkour","Freerunning",2],
+      ["Cricket","Baseball",2],["Curling","Pétanque",2],
+      ["Aviron","Canoë",2],["Kitesurf","Windsurf",2],
+      ["Boxe anglaise","Boxe thaï",3],["Patinage","Hockey sur glace",2],
+      ["Handball","Futsal",2],["Trail","Cross-country",2],
+      ["Breakdance","Capoeira",2],
+    ],
+    difficile: [
+      ["Biathlon","Pentathlon",1],["Apnée","Plongée libre",2],
+      ["Luge","Bobsleigh",2],["Kendo","Escrime",2],
+      ["Tai-chi","Qi gong",1],["Jiu-jitsu","Aïkido",2],
+      ["Slalom","Descente",2],["Water-polo","Natation synchronisée",2],
+      ["Pentathlon","Heptathlon",1],["Skeleton","Luge",2],
+      ["Snooker","Billard",3],["Fléchettes","Tir à l'arc",2],
+    ],
+  },
+  pays_villes: {
+    facile: [
+      ["Paris","Londres",3],["Japon","Chine",3],["New York","Los Angeles",3],
+      ["Italie","Espagne",3],["Brésil","Argentine",3],
+      ["Australie","Nouvelle-Zélande",2],["Tokyo","Pékin",2],
+      ["Maroc","Tunisie",2],["Égypte","Grèce",2],["Canada","États-Unis",3],
+      ["Allemagne","France",3],["Mexique","Brésil",2],
+      ["Inde","Chine",2],["Russie","Canada",2],["Londres","New York",3],
+    ],
+    moyen: [
+      ["Barcelone","Madrid",3],["Stockholm","Oslo",2],["Dubaï","Abu Dhabi",2],
+      ["Portugal","Espagne",3],["Colombie","Venezuela",2],
+      ["Istanbul","Athènes",2],["Prague","Budapest",3],
+      ["Séoul","Tokyo",2],["Thaïlande","Vietnam",3],
+      ["Cuba","Porto Rico",2],["Irlande","Écosse",3],
+      ["Danemark","Suède",2],["Pérou","Bolivie",2],
+      ["Amsterdam","Copenhague",2],["Lisbonne","Porto",2],
+    ],
+    difficile: [
+      ["Uruguay","Paraguay",2],["Slovénie","Slovaquie",3],
+      ["Bahreïn","Qatar",2],["Lettonie","Lituanie",2],
+      ["Costa Rica","Panama",2],["Sardaigne","Sicile",2],
+      ["Laos","Cambodge",2],["Croatie","Monténégro",2],
+      ["Autriche","Suisse",3],["Norvège","Finlande",2],
+      ["Malte","Chypre",2],["Ouganda","Rwanda",1],
+    ],
+  },
+  fun: {
+    facile: [
+      ["Excuses de retard","Excuses d'absence",3],
+      ["Mensonge","Vérité exagérée",2],["Lundi matin","Dimanche soir",3],
+      ["WiFi faible","Batterie à 1%",3],["Réunion inutile","Email trop long",3],
+      ["Selfie raté","Photo floue",2],["Chaussette perdue","Clé introuvable",3],
+      ["Grasse matinée","Sieste",3],["Série en entier","Juste un épisode",3],
+      ["Texto à l'ex","Appel en soirée",2],["Binge watching","Scrolling infini",3],
+      ["Micro-ondes","Je sais pas cuisiner",2],
+      ["File d'attente","Embouteillage",2],["Pyjama toute la journée","Télétravail",3],
+    ],
+    moyen: [
+      ["Flemme cosmique","Procrastination créative",2],
+      ["Bug informatique","Erreur 404",2],["Ex bizarre","Pote relou",2],
+      ["Karma instantané","Justice divine",2],
+      ["Insomnie","Grasse mat'",3],["Ghosting","Vu sans réponse",3],
+      ["Stalker discret","Curieux assumé",3],["Drama de groupe","Malaise entre potes",2],
+      ["Compliment chelou","Drague ratée",3],["Potin juteux","Rumeur douteuse",3],
+      ["Réveil à 5h","Coucher à 5h",3],["Chance insolente","Karma positif",2],
+      ["Excuse bidon","Mensonge pieux",3],["Petit budget","Rat",3],
+      ["Main character energy","Grande gueule",2],
+    ],
+    difficile: [
+      ["Malaise social","Silence gênant",3],["Rire nerveux","Sourire forcé",3],
+      ["Déjà-vu","Prémonition",2],
+      ["Pensée de douche","Révélation 3h du mat",2],
+      ["Talent caché","Passion honteuse",2],
+      ["Crush secret","Admiration silencieuse",2],
+      ["Flemme contagieuse","Procrastination solidaire",2],
+      ["Honte rétrospective","Cringe nocturne",3],
+      ["Mensonge blanc","Omission volontaire",2],
+      ["Confiance en soi","Arrogance",3],["Gentillesse","Naïveté",3],
+      ["Ambitieux","Arriviste",2],
+    ],
+  },
+  super_heros: {
+    facile: [
+      ["Superman","Thor",3],["Batman","Iron Man",3],
+      ["Wonder Woman","Captain Marvel",3],["Loki","Joker",3],
+      ["Venom","Carnage",3],["Darkseid","Thanos",3],
+      ["Doomsday","Hulk",2],["Black Panther","Blade",2],
+      ["Green Lantern","Shazam",2],["Drax","Bane",2],
+      ["Spider-Man","Batman",3],["Avengers","Justice League",3],
+      ["Deadpool","Wolverine",3],["Thanos","Dark Vador",3],
+      ["Joker","Green Goblin",2],["Harley Quinn","Catwoman",3],
+      ["Magneto","Docteur Doom",2],["Hulk","Superman",3],
+    ],
+    moyen: [
+      ["The Flash","Quicksilver",3],["Green Arrow","Hawkeye",3],
+      ["Aquaman","Namor",2],["Catwoman","Black Widow",3],
+      ["Cyborg","Vision",2],["Scarlet Witch","Phoenix",3],
+      ["Ant-Man","Atom",2],["Nebula","Mystique",2],
+      ["Shang-Chi","Iron Fist",2],["War Machine","Cyborg",2],
+      ["Kingpin","Penguin",2],["Dr Fate","Dr Strange",3],
+      ["Ego","Dormammu",2],["Star-Lord","Han Solo",3],
+      ["Nightwing","Winter Soldier",2],["Lex Luthor","Norman Osborn",2],
+      ["Hawkgirl","Falcon",2],["Black Adam","Gorr",2],
+    ],
+    difficile: [
+      ["Peacemaker","U.S. Agent",2],["Galactus","Arishem",1],
+      ["Taskmaster","Deathstroke",2],["America Chavez","Miss America",1],
+      ["Batgirl","Spider-Gwen",2],["Steppenwolf","Cull Obsidian",1],
+      ["Steppenwolf","Gorr",1],["Vision","Martian Manhunter",2],
+      ["Steve Rogers","Sam Wilson",2],["Moon Knight","Batman",3],
+      ["Swamp Thing","Man-Thing",2],["Red Hood","Winter Soldier",2],
+      ["Mister Fantastic","Plastic Man",2],["Power Girl","Supergirl",2],
+      ["Sentry","Hyperion",1],["Blue Beetle","Iron Man",2],
+    ],
+  },
+};
+
+// ─── UTILITY ─────────────────────────────────────────────────
+const shuffle = (arr) => {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+};
+const pickRandom = (arr) => arr[Math.floor(Math.random() * arr.length)];
+
+// ─── SMART WORD ENGINE ───────────────────────────────────────
+// Weighted random pick: higher weight = more likely to be chosen
+function weightedPick(pairs) {
+  const totalWeight = pairs.reduce((s, p) => s + (p[2] || 2), 0);
+  let r = Math.random() * totalWeight;
+  for (const p of pairs) {
+    r -= (p[2] || 2);
+    if (r <= 0) return p;
+  }
+  return pairs[pairs.length - 1];
+}
+
+function generateWords(theme, difficulty, mixThemes, usedPairs = []) {
+  // Helper: get all pairs for a theme across all difficulties
+  const getAllPairs = (t) => [
+    ...(WORD_DB[t]?.facile || []),
+    ...(WORD_DB[t]?.moyen || []),
+    ...(WORD_DB[t]?.difficile || []),
+  ];
+
+  // Helper: get pairs for a theme at a specific difficulty
+  const getDiffPairs = (t, d) => {
+    if (d === "mixte") return getAllPairs(t);
+    return WORD_DB[t]?.[d] || WORD_DB[t]?.["facile"] || [];
+  };
+
+  // Resolve pool
+  let pool;
+  if (theme === "mix" && mixThemes?.length >= 2) {
+    const validThemes = mixThemes.filter((t) => t !== "custom" && t !== "mix");
+    pool = [];
+    for (const t of validThemes) pool.push(...getDiffPairs(t, difficulty));
+  } else {
+    pool = getDiffPairs(theme, difficulty);
+  }
+  if (!pool.length) return { pair: ["Mot 1", "Mot 2"], key: "Mot 1|Mot 2" };
+
+  // Anti-repeat filter
+  const usedKeys = new Set(usedPairs);
+  const available = pool.filter((p) => !usedKeys.has(p[0] + "|" + p[1]));
+
+  // If all exhausted, keep anti-repeat only for last 3 pairs played
+  const source = available.length > 0 ? available : pool.filter(
+    (p) => !new Set(usedPairs.slice(-3)).has(p[0] + "|" + p[1])
+  );
+  const finalPool = source.length > 0 ? source : pool;
+
+  // Weighted selection
+  const pair = weightedPick(finalPool);
+  return { pair: [pair[0], pair[1]], key: pair[0] + "|" + pair[1] };
+}
+
+const THEMES = [
+  { id: "nourriture", label: "Nourriture", icon: "🍕", color: "#FF6B35" },
+  { id: "jeux_video", label: "Jeux vidéo", icon: "🎮", color: "#7B2FF7" },
+  { id: "films_series", label: "Films & Séries", icon: "🎬", color: "#E63946" },
+  { id: "super_heros", label: "Super Héros", icon: "🦸", color: "#1E90FF" },
+  { id: "sport", label: "Sport", icon: "⚽", color: "#2EC4B6" },
+  { id: "pays_villes", label: "Pays / Villes", icon: "🌍", color: "#F4A261" },
+  { id: "fun", label: "Fun", icon: "🤪", color: "#FF006E" },
+  { id: "custom", label: "Personnalisé", icon: "✏️", color: "#8AC926" },
+  { id: "mix", label: "Mix Thèmes", icon: "🎲", color: "#FFD166" },
+];
+
+const MODES = [
+  { id: "classique", label: "Classique", desc: "1 Undercover", icon: "🕵️" },
+  { id: "extreme", label: "Extrême", desc: "Undercover + Mr White", icon: "👻" },
+  { id: "perso", label: "Personnalisé", desc: "Configurer les rôles", icon: "⚙️" },
+];
+
+const DIFFICULTIES = [
+  { id: "facile", label: "Facile", desc: "Mots assez différents", color: "#2EC4B6" },
+  { id: "moyen", label: "Moyen", desc: "Mots proches", color: "#F4A261" },
+  { id: "difficile", label: "Difficile", desc: "Mots très proches", color: "#E63946" },
+  { id: "mixte", label: "Mixte", desc: "Toutes difficultés", color: "#A855F7" },
+];
+
+function assignRoles(count, mode, customUC = 1, customMW = 0) {
+  let uc = 1, mwCount = 0;
+  if (mode === "classique") { uc = 1; mwCount = 0; }
+  else if (mode === "extreme") { uc = Math.max(1, Math.floor((count - 1) / 3)); mwCount = 1; }
+  else if (mode === "perso") { uc = customUC; mwCount = customMW; }
+  // Clamp to valid range
+  const maxSpecial = count - 1;
+  uc = Math.min(uc, maxSpecial);
+  mwCount = Math.min(mwCount, maxSpecial - uc);
+  const roles = Array(count).fill("civil");
+  const idx = shuffle([...Array(count).keys()]);
+  let a = 0;
+  for (let i = 0; i < idx.length && a < uc; i++) { roles[idx[i]] = "undercover"; a++; }
+  let mwAssigned = 0;
+  for (let i = a; i < idx.length && mwAssigned < mwCount; i++) {
+    if (roles[idx[i]] === "civil") { roles[idx[i]] = "mrwhite"; mwAssigned++; }
+  }
+  return roles;
+}
+
+// ─── AVATAR COMPONENT ────────────────────────────────────────
+const Avatar = ({ emoji, photo, size = 40, style: sx = {} }) => {
+  if (photo) {
+    return (
+      <div style={{
+        width: size, height: size, borderRadius: "50%", overflow: "hidden",
+        flexShrink: 0, border: "2px solid var(--border)", ...sx,
+      }}>
+        <img src={photo} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+      </div>
+    );
+  }
+  return (
+    <div style={{
+      width: size, height: size, borderRadius: "50%", background: "var(--surface2)",
+      display: "flex", alignItems: "center", justifyContent: "center",
+      fontSize: size * 0.55, flexShrink: 0, border: "2px solid var(--border)", ...sx,
+    }}>
+      {emoji || "😊"}
+    </div>
+  );
+};
+
+// ─── TIMER ───────────────────────────────────────────────────
+const Timer = ({ seconds, onEnd }) => {
+  const [time, setTime] = useState(seconds);
+  const [running, setRunning] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => { setTime(seconds); setRunning(false); if (ref.current) clearInterval(ref.current); }, [seconds]);
+  const toggle = () => {
+    if (running) { clearInterval(ref.current); setRunning(false); }
+    else { setRunning(true); ref.current = setInterval(() => { setTime((t) => { if (t <= 1) { clearInterval(ref.current); setRunning(false); onEnd?.(); return 0; } return t - 1; }); }, 1000); }
+  };
+  const reset = () => { clearInterval(ref.current); setTime(seconds); setRunning(false); };
+  const pct = (time / seconds) * 100;
+  const color = pct > 50 ? "var(--accent)" : pct > 20 ? "#F4A261" : "#E63946";
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+      <div onClick={toggle} style={{ width: 56, height: 56, borderRadius: "50%", background: `conic-gradient(${color} ${pct}%, var(--surface2) ${pct}%)`, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+        <div style={{ width: 44, height: 44, borderRadius: "50%", background: "var(--surface)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, fontWeight: 700, fontFamily: "var(--font-mono)", color }}>{time}s</div>
+      </div>
+      <button onClick={reset} style={{ background: "none", border: "1px solid var(--border)", borderRadius: 8, color: "var(--text2)", padding: "4px 10px", cursor: "pointer", fontSize: 12 }}>↺</button>
+    </div>
+  );
+};
+
+// ─── EMOJI PICKER COMPONENT ──────────────────────────────────
+const EmojiPicker = ({ value, onSelect, onPhoto, photo }) => {
+  const [open, setOpen] = useState(false);
+  const [tab, setTab] = useState("personnes");
+
+  return (
+    <div style={{ position: "relative" }}>
+      <button onClick={() => setOpen(!open)} style={{
+        width: 52, height: 52, borderRadius: "50%", border: "2px solid var(--border)",
+        background: "var(--surface2)", cursor: "pointer", display: "flex",
+        alignItems: "center", justifyContent: "center", fontSize: 26, overflow: "hidden",
+        transition: "border-color .2s", position: "relative",
+      }}>
+        {photo ? (
+          <img src={photo} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+        ) : (
+          value || "😊"
+        )}
+      </button>
+
+      {open && (
+        <div style={{
+          position: "absolute", top: 58, left: -8, zIndex: 100,
+          background: "var(--surface)", border: "1px solid var(--border)",
+          borderRadius: 16, padding: 12, width: 280, maxHeight: 320,
+          boxShadow: "0 12px 40px rgba(0,0,0,.5)",
+        }}>
+          {/* Tabs */}
+          <div style={{ display: "flex", gap: 4, marginBottom: 10 }}>
+            {Object.entries(EMOJI_CATEGORIES).map(([key, cat]) => (
+              <button key={key} onClick={() => setTab(key)} style={{
+                flex: 1, padding: "6px 4px", borderRadius: 8, border: "none", cursor: "pointer",
+                background: tab === key ? "var(--accent)" : "var(--surface2)",
+                color: tab === key ? "#fff" : "var(--text2)",
+                fontSize: 11, fontWeight: 700, fontFamily: "var(--font)",
+              }}>
+                {cat.icon} {cat.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Grid */}
+          <div style={{
+            display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 4,
+            maxHeight: 180, overflowY: "auto",
+          }}>
+            {EMOJI_CATEGORIES[tab].emojis.map((e) => (
+              <button key={e} onClick={() => { onSelect(e); setOpen(false); }} style={{
+                width: 38, height: 38, borderRadius: 8, border: "none",
+                background: value === e ? "var(--accent)33" : "transparent",
+                cursor: "pointer", fontSize: 22, display: "flex",
+                alignItems: "center", justifyContent: "center",
+                transition: "background .15s",
+              }}>
+                {e}
+              </button>
+            ))}
+          </div>
+
+          {/* Camera button */}
+          <button onClick={() => { onPhoto(); setOpen(false); }} style={{
+            width: "100%", marginTop: 10, padding: "10px 0", borderRadius: 10,
+            border: "1px dashed var(--accent)", background: "var(--accent)11",
+            color: "var(--accent)", cursor: "pointer", fontSize: 13, fontWeight: 700,
+            fontFamily: "var(--font)", display: "flex", alignItems: "center",
+            justifyContent: "center", gap: 8,
+          }}>
+            📸 Prendre une photo
+          </button>
+
+          {/* Close */}
+          <button onClick={() => setOpen(false)} style={{
+            position: "absolute", top: 8, right: 10, background: "none", border: "none",
+            color: "var(--text3)", cursor: "pointer", fontSize: 16,
+          }}>✕</button>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ─── CAMERA MODAL ────────────────────────────────────────────
+const CameraModal = ({ onCapture, onClose }) => {
+  const videoRef = useRef(null);
+  const streamRef = useRef(null);
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    navigator.mediaDevices?.getUserMedia({ video: { facingMode: "user", width: 300, height: 300 } })
+      .then((stream) => {
+        if (cancelled) { stream.getTracks().forEach((t) => t.stop()); return; }
+        streamRef.current = stream;
+        if (videoRef.current) { videoRef.current.srcObject = stream; videoRef.current.play(); }
+        setReady(true);
+      })
+      .catch(() => { alert("Impossible d'accéder à la caméra"); onClose(); });
+    return () => { cancelled = true; streamRef.current?.getTracks().forEach((t) => t.stop()); };
+  }, []);
+
+  const capture = () => {
+    const video = videoRef.current;
+    if (!video) return;
+    const canvas = document.createElement("canvas");
+    canvas.width = 300; canvas.height = 300;
+    const ctx = canvas.getContext("2d");
+    const s = Math.min(video.videoWidth, video.videoHeight);
+    const sx = (video.videoWidth - s) / 2, sy = (video.videoHeight - s) / 2;
+    ctx.drawImage(video, sx, sy, s, s, 0, 0, 300, 300);
+    const dataUrl = canvas.toDataURL("image/jpeg", 0.7);
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    onCapture(dataUrl);
+  };
+
+  return (
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 200, background: "rgba(0,0,0,.85)",
+      display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+      padding: 20,
+    }}>
+      <div style={{
+        width: 260, height: 260, borderRadius: "50%", overflow: "hidden",
+        border: "3px solid var(--accent)", marginBottom: 24,
+      }}>
+        <video ref={videoRef} muted playsInline style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+      </div>
+      <div style={{ display: "flex", gap: 16 }}>
+        <button onClick={capture} disabled={!ready} style={{
+          ...btnPrimaryConst, opacity: ready ? 1 : .4, padding: "14px 32px",
+        }}>📸 Capturer</button>
+        <button onClick={() => { streamRef.current?.getTracks().forEach((t) => t.stop()); onClose(); }} style={{
+          ...btnSecondaryConst, padding: "14px 32px",
+        }}>Annuler</button>
+      </div>
+    </div>
+  );
+};
+
+// ─── MAIN APP ────────────────────────────────────────────────
+const UndercoverApp = function UndercoverApp() {
+  const [screen, setScreen] = useState("home");
+  const [players, setPlayers] = useState([]);
+  const [playerCount, setPlayerCount] = useState(5);
+  const [playerNames, setPlayerNames] = useState(["","","","","" ]);
+  const [playerEmojis, setPlayerEmojis] = useState(["😎","🤠","🥳","🧑‍🎤","🦊"]);
+  const [playerPhotos, setPlayerPhotos] = useState([null,null,null,null,null]);
+  const [theme, setTheme] = useState("nourriture");
+  const [mixThemes, setMixThemes] = useState([]);
+  const [difficulty, setDifficulty] = useState("moyen");
+  const [mode, setMode] = useState("classique");
+  const [customWords, setCustomWords] = useState(["", ""]);
+  const [useCustom, setUseCustom] = useState(false);
+  const [customUC, setCustomUC] = useState(1);
+  const [customMW, setCustomMW] = useState(0);
+  const [timerEnabled, setTimerEnabled] = useState(true);
+  const [timerSeconds, setTimerSeconds] = useState(45);
+  const [scores, setScores] = useState({});
+  const [round, setRound] = useState(1);
+  const [usedPairs, setUsedPairs] = useState([]);
+
+  const [revealIndex, setRevealIndex] = useState(0);
+  const [wordVisible, setWordVisible] = useState(false);
+
+  const [votes, setVotes] = useState({});
+  const [eliminated, setEliminated] = useState([]);
+  const [gamePhase, setGamePhase] = useState("describe");
+  const [winner, setWinner] = useState(null);
+
+  const [speakingOrder, setSpeakingOrder] = useState([]);
+  const [speakingIndex, setSpeakingIndex] = useState(0);
+  const [allSpoken, setAllSpoken] = useState(false);
+
+  // Anonymous vote states
+  const [voteOrder, setVoteOrder] = useState([]);
+  const [voteIndex, setVoteIndex] = useState(0);
+  const [voteStep, setVoteStep] = useState("handoff"); // handoff | choosing | confirmed
+
+  const [tiedPlayers, setTiedPlayers] = useState([]);
+  const [suddenDeathCount, setSuddenDeathCount] = useState(0);
+  const [suddenDeathVotes, setSuddenDeathVotes] = useState({});
+  const [tieMessage, setTieMessage] = useState("");
+  const [randomElimMessage, setRandomElimMessage] = useState("");
+  const [sdSpeakingIndex, setSdSpeakingIndex] = useState(0);
+  const [sdAllSpoken, setSdAllSpoken] = useState(false);
+  const [sdSpeakingOrder, setSdSpeakingOrder] = useState([]);
+  const [sdVoteOrder, setSdVoteOrder] = useState([]);
+  const [sdVoteIndex, setSdVoteIndex] = useState(0);
+  const [sdVoteStep, setSdVoteStep] = useState("handoff");
+  const MAX_SUDDEN_DEATH = 2;
+
+  const [cameraOpenFor, setCameraOpenFor] = useState(null); // player index or null
+  const [elimRevealIdx, setElimRevealIdx] = useState(null); // player index being revealed
+  const [elimRevealCallback, setElimRevealCallback] = useState(null); // what to do after anim
+  const [elimAnimPhase, setElimAnimPhase] = useState(0); // 0=enter, 1=role reveal, 2=ready
+  const [elimWinType, setElimWinType] = useState(null); // null | "civil" | "undercover"
+
+  const [fadeIn, setFadeIn] = useState(true);
+  const transition = (next) => { setFadeIn(false); setTimeout(() => { next(); setFadeIn(true); }, 300); };
+
+  const defaultEmojis = ["😎","🤠","🥳","🧑‍🎤","🦊","🐱","🐸","🦄","🤖","👽","🎃","🐼","🦁","🐧","🐙","🦋","🍎","🍊","⭐","🔥"];
+
+  useEffect(() => {
+    setPlayerNames((p) => { const n = [...p]; while (n.length < playerCount) n.push(""); return n.slice(0, playerCount); });
+    setPlayerEmojis((p) => { const n = [...p]; while (n.length < playerCount) n.push(defaultEmojis[n.length % defaultEmojis.length]); return n.slice(0, playerCount); });
+    setPlayerPhotos((p) => { const n = [...p]; while (n.length < playerCount) n.push(null); return n.slice(0, playerCount); });
+    // Clamp custom roles
+    setCustomUC((v) => Math.min(v, playerCount - 1));
+    setCustomMW((v) => Math.min(v, Math.max(0, playerCount - 1 - customUC)));
+  }, [playerCount]);
+
+  const updateName = (i, v) => setPlayerNames((p) => { const n = [...p]; n[i] = v; return n; });
+  const updateEmoji = (i, e) => { setPlayerEmojis((p) => { const n = [...p]; n[i] = e; return n; }); setPlayerPhotos((p) => { const n = [...p]; n[i] = null; return n; }); };
+  const updatePhoto = (i, url) => setPlayerPhotos((p) => { const n = [...p]; n[i] = url; return n; });
+  const getFinalNames = () => playerNames.map((n, i) => (n.trim() || `Joueur ${i + 1}`));
+
+  // Speaking order (Mr. White never first)
+  const generateSpeakingOrder = (ps) => {
+    const alive = (ps || players).map((p, i) => (p.alive ? i : -1)).filter((i) => i >= 0);
+    let order = shuffle(alive);
+    if (order.length > 1 && (ps || players)[order[0]]?.role === "mrwhite") {
+      const sw = order.findIndex((i) => (ps || players)[i].role !== "mrwhite");
+      if (sw > 0) [order[0], order[sw]] = [order[sw], order[0]];
+    }
+    return order;
+  };
+
+  const startDescribePhase = (ps) => {
+    const order = generateSpeakingOrder(ps);
+    setSpeakingOrder(order);
+    setSpeakingIndex(0);
+    setAllSpoken(false);
+    setGamePhase("describe");
+  };
+
+  // ── Game logic ──
+  const startGame = () => {
+    let words;
+    if (useCustom && customWords[0] && customWords[1]) {
+      words = [customWords[0], customWords[1]];
+    } else {
+      const result = generateWords(theme, difficulty, mixThemes, usedPairs);
+      words = result.pair;
+      setUsedPairs((prev) => [...prev, result.key]);
+    }
+    const roles = assignRoles(playerCount, mode, customUC, customMW);
+    const names = getFinalNames();
+    const np = names.map((name, i) => ({
+      name, role: roles[i],
+      word: roles[i] === "civil" ? words[0] : roles[i] === "undercover" ? words[1] : "???",
+      alive: true, emoji: playerEmojis[i], photo: playerPhotos[i],
+    }));
+    setPlayers(np); setRevealIndex(0); setWordVisible(false);
+    setEliminated([]); setVotes({}); setWinner(null);
+    setSuddenDeathCount(0); setTiedPlayers([]); setSuddenDeathVotes({});
+    setTieMessage(""); setRandomElimMessage("");
+    transition(() => setScreen("reveal"));
+  };
+
+  const nextReveal = () => {
+    if (wordVisible) {
+      setWordVisible(false);
+      setTimeout(() => {
+        if (revealIndex < players.length - 1) setRevealIndex(revealIndex + 1);
+        else transition(() => { setScreen("game"); startDescribePhase(); });
+      }, 200);
+    } else setWordVisible(true);
+  };
+
+  const startVote = () => {
+    const alive = players.map((p, i) => (p.alive ? i : -1)).filter((i) => i >= 0);
+    setVoteOrder(shuffle(alive));
+    setVoteIndex(0);
+    setVoteStep("handoff");
+    setVotes({});
+    setGamePhase("vote");
+  };
+  const castVote = (v, t) => setVotes((p) => ({ ...p, [v]: t }));
+
+  const detectWin = (up) => {
+    const uc = up.filter((p) => p.alive && p.role === "undercover").length;
+    const mw = up.filter((p) => p.alive && p.role === "mrwhite").length;
+    const ci = up.filter((p) => p.alive && p.role === "civil").length;
+    // Civils win when all impostors are eliminated
+    if (uc === 0 && mw === 0) return "civil";
+    // Undercovers win when they equal or outnumber civils
+    // Mr. White alone doesn't trigger the win — only undercovers count for the threshold
+    if (uc >= ci && uc > 0) return "undercover";
+    return null;
+  };
+
+  const applyWin = (winType, up) => {
+    setWinner(winType);
+    const ps = up || players;
+    const s = { ...scores };
+    if (winType === "civil") {
+      ps.filter((p) => p.role === "civil").forEach((p) => { s[p.name] = (s[p.name] || 0) + 1; });
+    } else {
+      ps.filter((p) => p.role !== "civil").forEach((p) => { s[p.name] = (s[p.name] || 0) + 1; });
+    }
+    setScores(s);
+  };
+
+  const elim = (idx) => {
+    const up = players.map((p, i) => i === idx ? { ...p, alive: false } : p);
+    setPlayers(up); setEliminated((e) => [...e, idx]); return up;
+  };
+
+  // Show elimination animation then call next action
+  const showElimReveal = (idx, updatedPlayers, nextAction, winType = null) => {
+    setElimRevealIdx(idx);
+    setElimAnimPhase(0);
+    setElimWinType(winType);
+    setElimRevealCallback(() => nextAction);
+    transition(() => setScreen("elimreveal"));
+    setTimeout(() => setElimAnimPhase(1), 1200);
+    setTimeout(() => setElimAnimPhase(2), winType ? 3500 : 2800);
+  };
+
+  const resolveVote = () => {
+    const alive = players.map((p, i) => (p.alive ? i : -1)).filter((i) => i >= 0);
+    const tally = {}; alive.forEach((i) => { tally[i] = 0; });
+    Object.values(votes).forEach((t) => { tally[t] = (tally[t] || 0) + 1; });
+    const mx = Math.max(...Object.values(tally));
+    const targets = Object.entries(tally).filter(([, v]) => v === mx).map(([k]) => +k);
+    if (targets.length === 1) {
+      const up = elim(targets[0]);
+      const winType = detectWin(up);
+      showElimReveal(targets[0], up, () => {
+        if (winType) {
+          applyWin(winType, up);
+          transition(() => setScreen("results"));
+        } else {
+          setSuddenDeathCount(0); setScreen("game"); startDescribePhase(up); setVotes({});
+        }
+      }, winType);
+    } else {
+      const sdOrder = speakingOrder.filter((i) => targets.includes(i));
+      setTiedPlayers(targets); setSuddenDeathCount(1);
+      setSuddenDeathVotes({}); setRandomElimMessage("");
+      setSdSpeakingOrder(sdOrder.length > 0 ? sdOrder : targets);
+      setSdSpeakingIndex(0); setSdAllSpoken(false);
+      setTieMessage(`Égalité entre ${targets.map((i) => players[i].name).join(", ")} !`);
+      transition(() => setScreen("suddendeath"));
+    }
+  };
+
+  const castSdVote = (v, t) => setSuddenDeathVotes((p) => ({ ...p, [v]: t }));
+
+  const resolveSd = () => {
+    const tally = {}; tiedPlayers.forEach((i) => { tally[i] = 0; });
+    Object.values(suddenDeathVotes).forEach((t) => { if (tally[t] !== undefined) tally[t]++; });
+    const mx = Math.max(...Object.values(tally));
+    const targets = Object.entries(tally).filter(([, v]) => v === mx).map(([k]) => +k);
+    if (targets.length === 1) {
+      const up = elim(targets[0]);
+      const winType = detectWin(up);
+      showElimReveal(targets[0], up, () => {
+        if (winType) {
+          applyWin(winType, up);
+          transition(() => setScreen("results"));
+        } else {
+          setSuddenDeathCount(0); setTiedPlayers([]);
+          setScreen("game"); startDescribePhase(up); setVotes({});
+        }
+      }, winType);
+    } else if (suddenDeathCount >= MAX_SUDDEN_DEATH) {
+      const ri = pickRandom(targets);
+      const up = elim(ri);
+      const winType = detectWin(up);
+      setRandomElimMessage(`Le sort a choisi... ${players[ri].name} !`);
+      setTimeout(() => {
+        setRandomElimMessage("");
+        showElimReveal(ri, up, () => {
+          if (winType) {
+            applyWin(winType, up);
+            transition(() => setScreen("results"));
+          } else {
+            setSuddenDeathCount(0); setTiedPlayers([]);
+            setScreen("game"); startDescribePhase(up); setVotes({});
+          }
+        }, winType);
+      }, 2500);
+    } else {
+      const sdOrder = speakingOrder.filter((i) => targets.includes(i));
+      setTiedPlayers(targets); setSuddenDeathCount((c) => c + 1);
+      setSuddenDeathVotes({});
+      setSdSpeakingOrder(sdOrder.length > 0 ? sdOrder : targets);
+      setSdSpeakingIndex(0); setSdAllSpoken(false);
+      setTieMessage(`Toujours à égalité ! Mort subite ${suddenDeathCount + 1}/${MAX_SUDDEN_DEATH}`);
+    }
+  };
+
+  const newRound = () => { setRound((r) => r + 1); transition(() => setScreen("setup")); };
+
+  const getAlive = () => players.map((p, i) => ({ ...p, idx: i })).filter((p) => p.alive);
+  const lastElim = eliminated.length > 0 ? players[eliminated[eliminated.length - 1]] : null;
+
+  const cs = {
+    minHeight: "100vh", background: "var(--bg)", color: "var(--text)", fontFamily: "var(--font)",
+    display: "flex", flexDirection: "column", alignItems: "center", padding: "20px 16px",
+    opacity: fadeIn ? 1 : 0, transition: "opacity .3s ease", overflowX: "hidden",
+  };
+
+  // ═══════════ HOME ═══════════
+  if (screen === "home") return (
+    <div style={cs}><style>{cssVars}</style>
+      <div style={{ textAlign: "center", marginTop: 40 }}>
+        <div style={{ fontSize: 64, marginBottom: 8 }}>🕵️</div>
+        <h1 style={{ fontFamily: "var(--font-display)", fontSize: "clamp(36px,8vw,56px)", fontWeight: 900, letterSpacing: -1, lineHeight: 1.1, background: "linear-gradient(135deg, var(--accent), var(--accent2))", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>UNDERCOVER</h1>
+        <p style={{ color: "var(--text2)", fontSize: 15, marginTop: 8, maxWidth: 300, margin: "8px auto 0" }}>Bluffez, déduisez, éliminez. Qui est l'imposteur ?</p>
+      </div>
+      <div style={{ marginTop: 48, display: "flex", flexDirection: "column", gap: 14, width: "100%", maxWidth: 340 }}>
+        <button onClick={() => transition(() => setScreen("setup"))} style={btnPrimaryConst}>Nouvelle partie</button>
+        {Object.keys(scores).length > 0 && (
+          <div style={{ background: "var(--surface)", borderRadius: 16, padding: 20, border: "1px solid var(--border)" }}>
+            <h3 style={{ fontSize: 14, color: "var(--text2)", marginBottom: 12, fontWeight: 600 }}>🏆 Scores</h3>
+            {Object.entries(scores).sort(([,a],[,b]) => b - a).map(([n, s]) => (
+              <div key={n} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid var(--border)" }}>
+                <span style={{ fontSize: 14 }}>{n}</span>
+                <span style={{ fontFamily: "var(--font-mono)", fontWeight: 700, color: "var(--accent)" }}>{s}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      <p style={{ position: "fixed", bottom: 16, fontSize: 11, color: "var(--text3)" }}>Manche {round}</p>
+    </div>
+  );
+
+  // ═══════════ SETUP ═══════════
+  if (screen === "setup") return (
+    <div style={cs}><style>{cssVars}</style>
+      <button onClick={() => transition(() => setScreen("home"))} style={btnBack}>← Retour</button>
+      <h2 style={sectionTitle}>Configuration</h2>
+      <div style={card}>
+        <label style={labelStyle}>Joueurs</label>
+        <div style={{ display: "flex", alignItems: "center", gap: 16, marginTop: 8 }}>
+          <button onClick={() => setPlayerCount(Math.max(3, playerCount - 1))} style={btnSmall}>−</button>
+          <span style={{ fontFamily: "var(--font-mono)", fontSize: 28, fontWeight: 800, color: "var(--accent)", minWidth: 40, textAlign: "center" }}>{playerCount}</span>
+          <button onClick={() => setPlayerCount(Math.min(20, playerCount + 1))} style={btnSmall}>+</button>
+        </div>
+      </div>
+      <div style={card}>
+        <label style={labelStyle}>Mode de jeu</label>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginTop: 8 }}>
+          {MODES.map((m) => (
+            <button key={m.id} onClick={() => setMode(m.id)} style={{ ...chipStyle, background: mode === m.id ? "var(--accent)" : "var(--surface2)", color: mode === m.id ? "#fff" : "var(--text2)", border: mode === m.id ? "2px solid var(--accent)" : "2px solid transparent" }}>
+              <span style={{ fontSize: 18 }}>{m.icon}</span><span style={{ fontWeight: 700, fontSize: 13 }}>{m.label}</span><span style={{ fontSize: 10, opacity: .7 }}>{m.desc}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+      {mode === "perso" && (
+        <div style={card}>
+          <label style={labelStyle}>Rôles personnalisés</label>
+          <p style={{ fontSize: 12, color: "var(--text3)", marginTop: 4, marginBottom: 12 }}>
+            {playerCount} joueurs → {Math.max(0, playerCount - customUC - customMW)} civil{Math.max(0, playerCount - customUC - customMW) > 1 ? "s" : ""}, {customUC} undercover{customUC > 1 ? "s" : ""}{customMW > 0 ? `, ${customMW} Mr White` : ""}
+          </p>
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 20 }}>🕵️</span>
+                <span style={{ fontSize: 14, fontWeight: 600 }}>Undercover{customUC > 1 ? "s" : ""}</span>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <button onClick={() => setCustomUC(Math.max(1, customUC - 1))} style={btnSmall}>−</button>
+                <span style={{ fontFamily: "var(--font-mono)", fontSize: 20, fontWeight: 800, color: "#E63946", minWidth: 24, textAlign: "center" }}>{customUC}</span>
+                <button onClick={() => setCustomUC(Math.min(playerCount - 1 - customMW, customUC + 1))} style={btnSmall}>+</button>
+              </div>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 20 }}>👻</span>
+                <span style={{ fontSize: 14, fontWeight: 600 }}>Mr White</span>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <button onClick={() => setCustomMW(Math.max(0, customMW - 1))} style={btnSmall}>−</button>
+                <span style={{ fontFamily: "var(--font-mono)", fontSize: 20, fontWeight: 800, color: "#888", minWidth: 24, textAlign: "center" }}>{customMW}</span>
+                <button onClick={() => setCustomMW(Math.min(playerCount - 1 - customUC, customMW + 1))} style={btnSmall}>+</button>
+              </div>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 0", borderTop: "1px solid var(--border)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 20 }}>😊</span>
+                <span style={{ fontSize: 14, fontWeight: 600 }}>Civil{Math.max(0, playerCount - customUC - customMW) > 1 ? "s" : ""}</span>
+              </div>
+              <span style={{ fontFamily: "var(--font-mono)", fontSize: 20, fontWeight: 800, color: "var(--accent)" }}>
+                {Math.max(0, playerCount - customUC - customMW)}
+              </span>
+            </div>
+          </div>
+          {(customUC + customMW >= playerCount) && (
+            <p style={{ fontSize: 12, color: "#E63946", marginTop: 8, fontWeight: 600 }}>⚠️ Il faut au moins 1 civil !</p>
+          )}
+        </div>
+      )}
+      <div style={card}>
+        <label style={labelStyle}>Thème</label>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 8, marginTop: 8 }}>
+          {THEMES.map((t) => (
+            <button key={t.id} onClick={() => { setTheme(t.id); setUseCustom(t.id === "custom"); }} style={{ ...chipStyleSmall, background: theme === t.id ? t.color + "22" : "var(--surface2)", border: theme === t.id ? `2px solid ${t.color}` : "2px solid transparent", color: theme === t.id ? t.color : "var(--text2)" }}>
+              <span style={{ fontSize: 20 }}>{t.icon}</span><span style={{ fontSize: 10, fontWeight: 600 }}>{t.label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+      {theme === "mix" && (
+        <div style={card}><label style={labelStyle}>Mixer</label>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 8 }}>
+            {THEMES.filter((t) => !["custom","mix"].includes(t.id)).map((t) => (
+              <button key={t.id} onClick={() => setMixThemes((p) => p.includes(t.id) ? p.filter((x) => x !== t.id) : [...p, t.id])} style={{ ...chipStyleSmall, background: mixThemes.includes(t.id) ? t.color + "22" : "var(--surface2)", border: mixThemes.includes(t.id) ? `2px solid ${t.color}` : "2px solid transparent", color: mixThemes.includes(t.id) ? t.color : "var(--text2)" }}>
+                {t.icon} {t.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      {theme === "custom" && (
+        <div style={card}><label style={labelStyle}>Mots personnalisés</label>
+          <input value={customWords[0]} onChange={(e) => setCustomWords([e.target.value, customWords[1]])} placeholder="Mot des civils" style={inputStyle} />
+          <input value={customWords[1]} onChange={(e) => setCustomWords([customWords[0], e.target.value])} placeholder="Mot des undercovers" style={{ ...inputStyle, marginTop: 8 }} />
+        </div>
+      )}
+      {theme !== "custom" && (
+        <div style={card}><label style={labelStyle}>Difficulté</label>
+          <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+            {DIFFICULTIES.map((d) => (
+              <button key={d.id} onClick={() => setDifficulty(d.id)} style={{ flex: 1, padding: "10px 8px", borderRadius: 12, cursor: "pointer", background: difficulty === d.id ? d.color + "22" : "var(--surface2)", border: difficulty === d.id ? `2px solid ${d.color}` : "2px solid transparent", color: difficulty === d.id ? d.color : "var(--text2)", fontWeight: 700, fontSize: 13, textAlign: "center", transition: "all .2s" }}>
+                {d.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      <div style={card}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <label style={labelStyle}>Timer</label>
+          <button onClick={() => setTimerEnabled(!timerEnabled)} style={{ width: 48, height: 26, borderRadius: 13, border: "none", cursor: "pointer", background: timerEnabled ? "var(--accent)" : "var(--surface2)", position: "relative", transition: "background .3s" }}>
+            <div style={{ width: 20, height: 20, borderRadius: "50%", background: "#fff", position: "absolute", top: 3, left: timerEnabled ? 25 : 3, transition: "left .3s" }} />
+          </button>
+        </div>
+        {timerEnabled && (
+          <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+            {[30,45,60,90].map((s) => (
+              <button key={s} onClick={() => setTimerSeconds(s)} style={{ flex: 1, padding: "8px 4px", borderRadius: 10, cursor: "pointer", fontSize: 13, fontFamily: "var(--font-mono)", fontWeight: 700, background: timerSeconds === s ? "var(--accent)" : "var(--surface2)", color: timerSeconds === s ? "#fff" : "var(--text2)", border: "none", transition: "all .2s" }}>{s}s</button>
+            ))}
+          </div>
+        )}
+      </div>
+      <button onClick={() => transition(() => setScreen("names"))} disabled={mode === "perso" && customUC + customMW >= playerCount} style={{ ...btnPrimaryConst, marginTop: 16, marginBottom: 40, opacity: (mode === "perso" && customUC + customMW >= playerCount) ? 0.4 : 1 }}>Suivant →</button>
+    </div>
+  );
+
+  // ═══════════ NAMES ═══════════
+  if (screen === "names") return (
+    <div style={cs}><style>{cssVars}</style>
+      {cameraOpenFor !== null && (
+        <CameraModal
+          onCapture={(url) => { updatePhoto(cameraOpenFor, url); setCameraOpenFor(null); }}
+          onClose={() => setCameraOpenFor(null)}
+        />
+      )}
+      <button onClick={() => transition(() => setScreen("setup"))} style={btnBack}>← Retour</button>
+      <div style={{ textAlign: "center", marginBottom: 4 }}>
+        <div style={{ fontSize: 40, marginBottom: 4 }}>👥</div>
+        <h2 style={sectionTitle}>Qui joue ?</h2>
+        <p style={{ color: "var(--text2)", fontSize: 13, maxWidth: 340, margin: "0 auto" }}>
+          Choisis ton emoji ou prends-toi en photo !
+        </p>
+      </div>
+      <div style={{ width: "100%", maxWidth: 400, display: "flex", flexDirection: "column", gap: 10, marginTop: 16 }}>
+        {(() => {
+          const finalNames = playerNames.map((n, i) => (n.trim() || `Joueur ${i + 1}`));
+          const dupes = new Set();
+          finalNames.forEach((n, i) => {
+            if (finalNames.findIndex((x) => x.toLowerCase() === n.toLowerCase()) !== i) dupes.add(n.toLowerCase());
+          });
+          const hasDupes = dupes.size > 0;
+          const canLaunch = !hasDupes && !(mode === "perso" && customUC + customMW >= playerCount);
+
+          return (
+            <>
+              {Array.from({ length: playerCount }, (_, i) => {
+                const fn = finalNames[i];
+                const isDupe = dupes.has(fn.toLowerCase());
+                return (
+                  <div key={i} style={{
+                    display: "flex", alignItems: "center", gap: 10,
+                    background: "var(--surface)", borderRadius: 14,
+                    padding: "6px 6px 6px 10px",
+                    border: isDupe ? "1px solid #E63946" : "1px solid var(--border)",
+                    transition: "border-color .2s",
+                  }}>
+                    <EmojiPicker
+                      value={playerEmojis[i]}
+                      photo={playerPhotos[i]}
+                      onSelect={(e) => updateEmoji(i, e)}
+                      onPhoto={() => setCameraOpenFor(i)}
+                    />
+                    <input
+                      value={playerNames[i] || ""}
+                      onChange={(e) => updateName(i, e.target.value)}
+                      placeholder={`Joueur ${i + 1}`}
+                      maxLength={20}
+                      style={{ flex: 1, padding: "13px 12px", borderRadius: 10, border: "none", background: "var(--surface2)", color: "var(--text)", fontSize: 15, fontFamily: "var(--font)", outline: "none" }}
+                    />
+                    {isDupe ? (
+                      <span style={{ color: "#E63946", fontSize: 12, marginRight: 8, fontWeight: 700 }}>⚠️</span>
+                    ) : playerNames[i]?.trim() ? (
+                      <span style={{ color: "var(--accent)", fontSize: 14, marginRight: 8, fontWeight: 700 }}>✓</span>
+                    ) : null}
+                  </div>
+                );
+              })}
+
+              {hasDupes && (
+                <p style={{ fontSize: 12, color: "#E63946", fontWeight: 600, textAlign: "center", marginTop: 4 }}>
+                  ⚠️ Deux joueurs ne peuvent pas avoir le même prénom
+                </p>
+              )}
+
+              <p style={{ fontSize: 11, color: "var(--text3)", marginTop: hasDupes ? 2 : 10, textAlign: "center" }}>Les champs vides → « Joueur X »</p>
+
+              <button onClick={startGame} disabled={!canLaunch} style={{
+                ...btnPrimaryConst, marginTop: 12, marginBottom: 40,
+                opacity: canLaunch ? 1 : 0.4, cursor: canLaunch ? "pointer" : "not-allowed",
+              }}>🚀 Lancer la partie</button>
+            </>
+          );
+        })()}
+      </div>
+    </div>
+  );
+
+  // ═══════════ REVEAL ═══════════
+  if (screen === "reveal") {
+    const p = players[revealIndex];
+    const rc = p.role === "civil" ? "var(--accent)" : p.role === "undercover" ? "#E63946" : "#aaa";
+    const rl = p.role === "civil" ? "Civil" : p.role === "undercover" ? "Undercover" : "Mr. White";
+    return (
+      <div style={{ ...cs, justifyContent: "center", minHeight: "100vh" }}><style>{cssVars}</style>
+        <p style={{ fontSize: 13, color: "var(--text2)", marginBottom: 24, fontWeight: 600 }}>{revealIndex + 1} / {players.length}</p>
+        <div style={{ background: "var(--surface)", borderRadius: 24, padding: "40px 32px", border: "1px solid var(--border)", textAlign: "center", width: "100%", maxWidth: 340, boxShadow: "0 20px 60px rgba(0,0,0,.3)" }}>
+          <Avatar emoji={p.emoji} photo={p.photo} size={72} style={{ margin: "0 auto 12px", border: "3px solid var(--border)" }} />
+          <h2 style={{ fontSize: 22, fontWeight: 800, fontFamily: "var(--font-display)" }}>{p.name}</h2>
+          {wordVisible ? (
+            <div style={{ marginTop: 20, animation: "fadeUp .4s ease" }}>
+              <span style={{ display: "inline-block", padding: "4px 14px", borderRadius: 20, background: rc + "22", color: rc, fontSize: 12, fontWeight: 700, marginBottom: 12 }}>{rl}</span>
+              <p style={{ fontSize: 28, fontWeight: 900, fontFamily: "var(--font-display)", color: rc, marginTop: 8 }}>
+                {p.role === "mrwhite" ? "Aucun mot 👀" : p.word}
+              </p>
+              <p style={{ fontSize: 12, color: "var(--text3)", marginTop: 16 }}>Mémorise ton mot puis passe au suivant</p>
+            </div>
+          ) : (
+            <div style={{ marginTop: 20 }}>
+              <p style={{ color: "var(--text2)", fontSize: 14 }}>Appuie pour voir ton mot</p>
+              <div style={{ width: 64, height: 64, margin: "16px auto", borderRadius: "50%", background: "var(--accent)11", border: "2px dashed var(--accent)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, animation: "pulse 2s infinite" }}>👁️</div>
+            </div>
+          )}
+        </div>
+        <button onClick={nextReveal} style={{ ...btnPrimaryConst, marginTop: 32, width: "100%", maxWidth: 340 }}>
+          {!wordVisible ? "👁️ Révéler mon mot" : revealIndex < players.length - 1 ? "Joueur suivant →" : "🎮 Commencer !"}
+        </button>
+      </div>
+    );
+  }
+
+  // ═══════════ GAME ═══════════
+  if (screen === "game") {
+    const alive = getAlive();
+    return (
+      <div style={cs}><style>{cssVars}</style>
+        <div style={{ width: "100%", maxWidth: 400 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+            <h2 style={{ fontSize: 18, fontWeight: 800, fontFamily: "var(--font-display)" }}>
+              {gamePhase === "describe" ? "💬 Description" : "🗳️ Vote"}
+            </h2>
+            <span style={{ fontSize: 12, color: "var(--text2)", fontFamily: "var(--font-mono)", background: "var(--surface2)", padding: "4px 10px", borderRadius: 8 }}>{alive.length} en jeu</span>
+          </div>
+
+          {lastElim && gamePhase === "describe" && (
+            <div style={{ background: "#E6394611", border: "1px solid #E6394633", borderRadius: 14, padding: "12px 16px", marginBottom: 16, fontSize: 13, color: "#E63946", display: "flex", alignItems: "center", gap: 10 }}>
+              <Avatar emoji={lastElim.emoji} photo={lastElim.photo} size={28} />
+              <span>❌ <strong>{lastElim.name}</strong> éliminé(e) — <strong>{lastElim.role === "civil" ? "Civil" : lastElim.role === "undercover" ? "Undercover" : "Mr. White"}</strong></span>
+            </div>
+          )}
+
+          {/* ── DESCRIBE PHASE ── */}
+          {gamePhase === "describe" && (
+            <>
+              {!allSpoken ? (
+                <>
+                  <div style={{ width: "100%", height: 4, background: "var(--surface2)", borderRadius: 2, marginBottom: 20, overflow: "hidden" }}>
+                    <div style={{ height: "100%", borderRadius: 2, background: "linear-gradient(90deg, var(--accent), var(--accent2))", width: `${(speakingIndex / speakingOrder.length) * 100}%`, transition: "width .4s ease" }} />
+                  </div>
+                  {speakingOrder.length > 0 && speakingIndex < speakingOrder.length && (() => {
+                    const sp = players[speakingOrder[speakingIndex]];
+                    return (
+                      <div style={{ ...card, textAlign: "center", padding: "32px 24px", border: "1px solid var(--accent)44", boxShadow: "0 8px 32px rgba(108,92,231,.15)", animation: "fadeUp .4s ease" }}>
+                        <p style={{ fontSize: 12, color: "var(--text3)", marginBottom: 8, fontFamily: "var(--font-mono)" }}>Tour {speakingIndex + 1} / {speakingOrder.length}</p>
+                        <Avatar emoji={sp.emoji} photo={sp.photo} size={64} style={{ margin: "0 auto 12px", border: "3px solid var(--accent)" }} />
+                        <p style={{ fontSize: 13, color: "var(--text2)", marginBottom: 4 }}>C'est au tour de</p>
+                        <h3 style={{ fontSize: 26, fontWeight: 900, fontFamily: "var(--font-display)", color: "var(--accent)" }}>{sp.name}</h3>
+                        <p style={{ fontSize: 13, color: "var(--text2)", marginTop: 12 }}>Décris ton mot sans le dire !</p>
+                        {timerEnabled && <div style={{ marginTop: 16, display: "flex", justifyContent: "center" }}><Timer key={speakingIndex} seconds={timerSeconds} onEnd={() => {}} /></div>}
+                      </div>
+                    );
+                  })()}
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 16, justifyContent: "center" }}>
+                    {speakingOrder.map((pIdx, i) => (
+                      <div key={pIdx} style={{ display: "flex", alignItems: "center", gap: 4, padding: "3px 10px 3px 3px", borderRadius: 20, background: i < speakingIndex ? "var(--accent)15" : i === speakingIndex ? "var(--accent)" : "var(--surface2)", transition: "all .3s", opacity: i < speakingIndex ? .5 : 1 }}>
+                        <Avatar emoji={players[pIdx]?.emoji} photo={players[pIdx]?.photo} size={22} style={{ border: "none" }} />
+                        <span style={{ fontSize: 11, fontWeight: 600, color: i === speakingIndex ? "#fff" : "var(--text3)", textDecoration: i < speakingIndex ? "line-through" : "none" }}>{players[pIdx]?.name}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <button onClick={() => { if (speakingIndex < speakingOrder.length - 1) setSpeakingIndex(speakingIndex + 1); else setAllSpoken(true); }} style={{ ...btnPrimaryConst, marginTop: 20, width: "100%" }}>
+                    {speakingIndex < speakingOrder.length - 1 ? "Joueur suivant →" : "✅ Tout le monde a parlé"}
+                  </button>
+                </>
+              ) : (
+                <div style={{ ...card, textAlign: "center", padding: "28px 20px" }}>
+                  <div style={{ fontSize: 40, marginBottom: 8 }}>💬</div>
+                  <p style={{ fontSize: 15, fontWeight: 700, marginBottom: 6 }}>Tous les joueurs ont donné leur indice !</p>
+                  <p style={{ fontSize: 13, color: "var(--text2)", marginBottom: 20 }}>Délibérez, puis passez au vote.</p>
+                  <button onClick={startVote} style={{ ...btnPrimaryConst, width: "100%" }}>🗳️ Passer au vote</button>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* ── VOTE PHASE (Anonymous) ── */}
+          {gamePhase === "vote" && (
+            <>
+              {voteIndex < voteOrder.length ? (() => {
+                const voterIdx = voteOrder[voteIndex];
+                const voter = players[voterIdx];
+                const targets = alive.filter((t) => t.idx !== voterIdx);
+
+                // Handoff screen — pass the phone
+                if (voteStep === "handoff") return (
+                  <div style={{ ...card, textAlign: "center", padding: "32px 24px", border: "1px solid var(--accent)44" }}>
+                    <p style={{ fontSize: 12, color: "var(--text3)", marginBottom: 8, fontFamily: "var(--font-mono)" }}>
+                      Vote {voteIndex + 1} / {voteOrder.length}
+                    </p>
+                    <div style={{ fontSize: 44, marginBottom: 12 }}>🗳️</div>
+                    <p style={{ fontSize: 13, color: "var(--text2)", marginBottom: 4 }}>Passez le téléphone à</p>
+                    <Avatar emoji={voter.emoji} photo={voter.photo} size={64} style={{ margin: "12px auto", border: "3px solid var(--accent)" }} />
+                    <h3 style={{ fontSize: 24, fontWeight: 900, fontFamily: "var(--font-display)", color: "var(--accent)" }}>{voter.name}</h3>
+                    <p style={{ fontSize: 12, color: "var(--text3)", marginTop: 12 }}>Les autres, ne regardez pas !</p>
+                    <button onClick={() => setVoteStep("choosing")} style={{ ...btnPrimaryConst, width: "100%", marginTop: 20 }}>
+                      👁️ Je suis prêt(e)
+                    </button>
+                  </div>
+                );
+
+                // Choosing screen — pick a target
+                if (voteStep === "choosing") return (
+                  <div style={{ ...card, textAlign: "center", padding: "24px 20px", animation: "fadeUp .3s ease" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 16 }}>
+                      <Avatar emoji={voter.emoji} photo={voter.photo} size={32} style={{ border: "none" }} />
+                      <h3 style={{ fontSize: 18, fontWeight: 800, fontFamily: "var(--font-display)" }}>{voter.name}, qui éliminer ?</h3>
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      {targets.map((target) => (
+                        <button key={target.idx} onClick={() => { castVote(voterIdx, target.idx); setVoteStep("confirmed"); }} style={{
+                          padding: "14px 16px", borderRadius: 14, cursor: "pointer", fontSize: 15, fontWeight: 600,
+                          transition: "all .2s", border: "2px solid var(--border)", display: "flex", alignItems: "center", gap: 10,
+                          background: "var(--surface2)", color: "var(--text)", width: "100%",
+                        }}>
+                          <Avatar emoji={target.emoji} photo={target.photo} size={32} style={{ border: "none" }} />
+                          {target.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                );
+
+                // Confirmed screen
+                if (voteStep === "confirmed") return (
+                  <div style={{ ...card, textAlign: "center", padding: "32px 24px", animation: "fadeUp .3s ease" }}>
+                    <div style={{ fontSize: 48, marginBottom: 12 }}>✅</div>
+                    <h3 style={{ fontSize: 20, fontWeight: 800, fontFamily: "var(--font-display)", color: "var(--accent)" }}>Vote enregistré !</h3>
+                    <p style={{ fontSize: 13, color: "var(--text3)", marginTop: 8 }}>Passe le téléphone au prochain votant</p>
+                    <button onClick={() => {
+                      if (voteIndex < voteOrder.length - 1) {
+                        setVoteIndex(voteIndex + 1);
+                        setVoteStep("handoff");
+                      } else {
+                        setVoteStep("allvoted");
+                        setVoteIndex(voteOrder.length);
+                      }
+                    }} style={{ ...btnPrimaryConst, width: "100%", marginTop: 20 }}>
+                      {voteIndex < voteOrder.length - 1 ? "Votant suivant →" : "Tous les votes sont faits ✓"}
+                    </button>
+                  </div>
+                );
+                return null;
+              })() : (
+                // All voted — reveal button
+                <div style={{ ...card, textAlign: "center", padding: "32px 24px" }}>
+                  <div style={{ fontSize: 48, marginBottom: 12 }}>🔮</div>
+                  <h3 style={{ fontSize: 20, fontWeight: 800, fontFamily: "var(--font-display)" }}>Tous les votes sont tombés !</h3>
+                  <p style={{ fontSize: 13, color: "var(--text2)", marginTop: 8, marginBottom: 20 }}>
+                    {voteOrder.length} joueurs ont voté en secret
+                  </p>
+                  {/* Vote progress dots */}
+                  <div style={{ display: "flex", justifyContent: "center", gap: 6, marginBottom: 20 }}>
+                    {voteOrder.map((pIdx, i) => (
+                      <div key={i} style={{
+                        width: 10, height: 10, borderRadius: "50%",
+                        background: "var(--accent)", opacity: 0.5 + (i * 0.05),
+                      }} />
+                    ))}
+                  </div>
+                  <button onClick={resolveVote} style={{ ...btnPrimaryConst, width: "100%", fontSize: 18 }}>
+                    ⚡ Révéler le résultat
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ═══════════ ELIMINATION REVEAL ═══════════
+  if (screen === "elimreveal" && elimRevealIdx !== null) {
+    const ep = players[elimRevealIdx];
+    const isCivil = ep.role === "civil";
+    const isUC = ep.role === "undercover";
+    const isMW = ep.role === "mrwhite";
+    const ucWins = elimWinType === "undercover";
+    const civilWins = elimWinType === "civil";
+
+    const bgGradient = isCivil
+      ? ucWins
+        ? "radial-gradient(ellipse at 50% 40%, #2d1117 0%, #0C0C14 70%)"
+        : "radial-gradient(ellipse at 50% 40%, #1a1a3e 0%, #0C0C14 70%)"
+      : isUC
+      ? "radial-gradient(ellipse at 50% 40%, #2d1117 0%, #0C0C14 70%)"
+      : "radial-gradient(ellipse at 50% 40%, #1a1a2e 0%, #0C0C14 70%)";
+
+    const accentColor = isCivil ? (ucWins ? "#E63946" : "#4A90D9") : isUC ? "#E63946" : "#aaa";
+    const roleLabel = isCivil ? "CIVIL" : isUC ? "UNDERCOVER" : "MR. WHITE";
+
+    const ucPlayersAlive = players.filter((p) => p.alive && (p.role === "undercover" || p.role === "mrwhite"));
+    const singleUC = ucPlayersAlive.length === 1;
+
+    const flavorText = isCivil
+      ? ucWins
+        ? "C'en est fini pour les civils..."
+        : "Mauvaise pioche... Un innocent tombe."
+      : isUC
+      ? civilWins
+        ? "Le dernier imposteur est tombé !"
+        : "Bien joué ! Un imposteur démasqué !"
+      : "Le fantôme a été révélé !";
+    const bigEmoji = isCivil ? (ucWins ? "💀" : "😵") : isUC ? "🎯" : "👻";
+
+    return (
+      <div style={{
+        minHeight: "100vh", background: bgGradient, color: "var(--text)", fontFamily: "var(--font)",
+        display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+        padding: "20px 16px", overflow: "hidden", position: "relative",
+      }}>
+        <style>{cssVars}</style>
+        <style>{`
+          @keyframes elimEnter { 0% { transform: scale(0) rotate(-10deg); opacity: 0; } 60% { transform: scale(1.15) rotate(3deg); } 100% { transform: scale(1) rotate(0); opacity: 1; } }
+          @keyframes elimShake { 0%,100% { transform: translateX(0); } 10%,30%,50%,70%,90% { transform: translateX(-6px); } 20%,40%,60%,80% { transform: translateX(6px); } }
+          @keyframes elimGlow { 0%,100% { box-shadow: 0 0 20px ${accentColor}44; } 50% { box-shadow: 0 0 60px ${accentColor}88, 0 0 100px ${accentColor}44; } }
+          @keyframes confetti1 { 0% { transform: translateY(0) rotate(0); opacity: 1; } 100% { transform: translateY(-200px) translateX(80px) rotate(720deg); opacity: 0; } }
+          @keyframes confetti2 { 0% { transform: translateY(0) rotate(0); opacity: 1; } 100% { transform: translateY(-180px) translateX(-70px) rotate(-540deg); opacity: 0; } }
+          @keyframes confetti3 { 0% { transform: translateY(0) rotate(0); opacity: 1; } 100% { transform: translateY(-220px) translateX(40px) rotate(480deg); opacity: 0; } }
+          @keyframes roleSlideIn { 0% { transform: translateY(30px) scale(0.5); opacity: 0; } 100% { transform: translateY(0) scale(1); opacity: 1; } }
+          @keyframes skullFloat { 0%,100% { transform: translateY(0) rotate(0); } 50% { transform: translateY(-10px) rotate(5deg); } }
+          @keyframes fadeInUp { 0% { transform: translateY(20px); opacity: 0; } 100% { transform: translateY(0); opacity: 1; } }
+          @keyframes resultsFloat { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+        `}</style>
+
+        {/* Confetti for UC elimination (civil catches UC) */}
+        {isUC && !ucWins && elimAnimPhase >= 1 && (
+          <>
+            {["🎉","⭐","🔥","✨","🎊","💥","🏆","🎯"].map((e, i) => (
+              <div key={i} style={{
+                position: "absolute",
+                top: `${40 + Math.random() * 20}%`, left: `${15 + (i * 10)}%`,
+                fontSize: 24 + Math.random() * 16,
+                animation: `confetti${(i % 3) + 1} ${1.5 + Math.random()}s ease-out ${i * 0.1}s forwards`,
+                pointerEvents: "none",
+              }}>{e}</div>
+            ))}
+          </>
+        )}
+
+        {/* Floating skulls for civil elimination */}
+        {isCivil && elimAnimPhase >= 1 && (
+          <>
+            {(ucWins ? ["💀","🕵️","🔪","💀","🩸","☠️"] : ["💀","🥀","😢","💔"]).map((e, i) => (
+              <div key={i} style={{
+                position: "absolute",
+                top: `${15 + i * 14}%`, left: `${8 + i * 18}%`,
+                fontSize: ucWins ? 32 : 28, opacity: ucWins ? 0.45 : 0.3,
+                animation: `skullFloat ${2 + i * 0.5}s ease-in-out infinite`,
+                pointerEvents: "none",
+              }}>{e}</div>
+            ))}
+          </>
+        )}
+
+        {/* Main card */}
+        <div style={{
+          animation: elimAnimPhase === 0 ? "elimEnter .8s cubic-bezier(.34,1.56,.64,1) forwards" : isCivil && elimAnimPhase === 1 ? "elimShake .6s ease" : "none",
+          textAlign: "center", position: "relative",
+        }}>
+          {/* Avatar with glow */}
+          <div style={{
+            width: 120, height: 120, borderRadius: "50%", margin: "0 auto 20px",
+            animation: elimAnimPhase >= 1 ? `elimGlow 2s ease-in-out infinite` : "none",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            border: `4px solid ${accentColor}`,
+            overflow: "hidden", background: "var(--surface)",
+          }}>
+            {ep.photo ? (
+              <img src={ep.photo} alt="" style={{
+                width: "100%", height: "100%", objectFit: "cover",
+                filter: elimAnimPhase >= 1 ? (isCivil ? "grayscale(80%)" : "none") : "none",
+                transition: "filter .8s",
+              }} />
+            ) : (
+              <span style={{
+                fontSize: 60,
+                filter: elimAnimPhase >= 1 ? (isCivil ? "grayscale(80%)" : "none") : "none",
+                transition: "filter .8s",
+              }}>{ep.emoji}</span>
+            )}
+          </div>
+
+          {/* Name */}
+          <h2 style={{
+            fontFamily: "var(--font-display)", fontSize: 28, fontWeight: 900,
+            marginBottom: 8,
+          }}>{ep.name}</h2>
+
+          <p style={{ color: "var(--text2)", fontSize: 14, marginBottom: 20 }}>a été éliminé(e)...</p>
+
+          {/* Role reveal */}
+          {elimAnimPhase >= 1 && (
+            <div style={{ animation: "roleSlideIn .5s cubic-bezier(.34,1.56,.64,1) forwards" }}>
+              <div style={{ fontSize: 56, marginBottom: 12 }}>{bigEmoji}</div>
+              <div style={{
+                display: "inline-block", padding: "8px 24px", borderRadius: 16,
+                background: accentColor + "22", border: `2px solid ${accentColor}`,
+                marginBottom: 12,
+              }}>
+                <span style={{
+                  fontFamily: "var(--font-display)", fontSize: 20, fontWeight: 900,
+                  color: accentColor, letterSpacing: 2,
+                }}>{roleLabel}</span>
+              </div>
+              <p style={{
+                fontSize: 15, color: ucWins ? "#E63946" : isCivil ? "#4A90D9" : isUC ? "#FF6B35" : "var(--text2)",
+                fontWeight: 600, marginTop: 8,
+                animation: "fadeInUp .4s ease .2s both",
+              }}>{flavorText}</p>
+            </div>
+          )}
+
+          {/* Word reveal — only when game ends, never mid-game */}
+          {elimAnimPhase >= 1 && elimWinType && ep.word !== "???" && (
+            <p style={{
+              marginTop: 16, fontSize: 13, color: "var(--text3)",
+              animation: "fadeInUp .4s ease .5s both",
+            }}>
+              Son mot : <strong style={{ color: "var(--text2)" }}>{ep.word}</strong>
+            </p>
+          )}
+
+          {/* UC Winner showcase when undercover wins */}
+          {elimAnimPhase >= 2 && ucWins && (
+            <div style={{ marginTop: 24, animation: "fadeInUp .6s ease .2s both", textAlign: "center" }}>
+              <div style={{ width: "100%", height: 1, background: "var(--border)", margin: "0 0 20px" }} />
+              <p style={{ fontSize: 12, color: "var(--text3)", textTransform: "uppercase", letterSpacing: 2, marginBottom: 12 }}>
+                {singleUC ? "L'Undercover gagne" : "Les Undercovers gagnent"}
+              </p>
+              <div style={{ display: "flex", justifyContent: "center", gap: 12, marginBottom: 8 }}>
+                {ucPlayersAlive.map((p, i) => (
+                  <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+                    <Avatar emoji={p.emoji} photo={p.photo} size={singleUC ? 80 : 56} style={{
+                      border: "3px solid #E63946",
+                      boxShadow: "0 0 30px #E6394666, 0 0 60px #E6394633",
+                      animation: "resultsFloat 2s ease-in-out infinite",
+                    }} />
+                    <span style={{ fontSize: 14, fontWeight: 800, color: "#E63946", fontFamily: "var(--font-display)" }}>{p.name}</span>
+                  </div>
+                ))}
+              </div>
+              <p style={{ fontSize: 13, color: "#FF6B35", fontWeight: 600 }}>
+                {singleUC ? `${ucPlayersAlive[0]?.name} a bluffé tout le monde !` : "Ils ont bluffé tout le monde !"}
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* Continue button */}
+        {elimAnimPhase >= 2 && (
+          <button onClick={() => {
+            if (elimRevealCallback) elimRevealCallback();
+          }} style={{
+            ...btnPrimaryConst, marginTop: ucWins ? 24 : 40,
+            animation: "fadeInUp .4s ease forwards",
+            background: (isUC && !ucWins) ? "linear-gradient(135deg, #E63946, #FF6B35)"
+              : ucWins ? "linear-gradient(135deg, #E63946, #FF006E)"
+              : civilWins ? "linear-gradient(135deg, var(--accent), var(--accent2))"
+              : "linear-gradient(135deg, var(--accent), var(--accent2))",
+          }}>
+            {ucWins ? "🕵️ Voir les résultats" : civilWins ? "🎉 Voir les résultats" : isUC ? "🎉 On continue !" : "😤 On continue..."}
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  // ═══════════ SUDDEN DEATH ═══════════
+  if (screen === "suddendeath") {
+    const alive = getAlive();
+    const allSdVoted = alive.every((p) => suddenDeathVotes[p.idx] !== undefined);
+
+    if (randomElimMessage) return (
+      <div style={{ ...cs, justifyContent: "center", minHeight: "100vh" }}><style>{cssVars}</style>
+        <div style={{ textAlign: "center" }}>
+          <div style={{ fontSize: 64, marginBottom: 16, animation: "bounce 1s ease" }}>🎲</div>
+          <h2 style={{ fontFamily: "var(--font-display)", fontSize: 22, fontWeight: 900, color: "#FF6B35" }}>Élimination aléatoire</h2>
+          <p style={{ fontSize: 18, fontWeight: 700, color: "#E63946", marginTop: 16, background: "#E6394611", padding: "12px 24px", borderRadius: 14 }}>{randomElimMessage}</p>
+          <p style={{ fontSize: 13, color: "var(--text3)", marginTop: 16 }}>Après {MAX_SUDDEN_DEATH} morts subites sans résultat...</p>
+        </div>
+      </div>
+    );
+
+    return (
+      <div style={cs}><style>{cssVars}</style>
+        <div style={{ width: "100%", maxWidth: 420 }}>
+          {/* Header */}
+          <div style={{ textAlign: "center", marginBottom: 24 }}>
+            <div style={{ fontSize: 48, marginBottom: 8, animation: "pulse 1.5s infinite" }}>⚔️</div>
+            <h2 style={{ fontFamily: "var(--font-display)", fontSize: 22, fontWeight: 900, background: "linear-gradient(135deg, #E63946, #FF6B35)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>MORT SUBITE</h2>
+            <span style={{ display: "inline-block", marginTop: 8, padding: "4px 14px", borderRadius: 20, background: "#E6394622", color: "#E63946", fontSize: 12, fontWeight: 700, fontFamily: "var(--font-mono)" }}>Round {suddenDeathCount} / {MAX_SUDDEN_DEATH}</span>
+          </div>
+
+          <div style={{ background: "var(--surface)", borderRadius: 16, padding: "16px 20px", border: "1px solid #E6394644", marginBottom: 16, textAlign: "center" }}>
+            <p style={{ fontSize: 14, color: "#E63946", fontWeight: 600 }}>{tieMessage}</p>
+            {suddenDeathCount >= MAX_SUDDEN_DEATH && <p style={{ fontSize: 11, color: "#F4A261", marginTop: 6 }}>⚠️ Dernier round ! Prochaine égalité → élimination aléatoire</p>}
+          </div>
+
+          {/* ── SD DESCRIBE PHASE (step by step, same order) ── */}
+          {!sdAllSpoken ? (
+            <>
+              <div style={{ width: "100%", height: 4, background: "var(--surface2)", borderRadius: 2, marginBottom: 16, overflow: "hidden" }}>
+                <div style={{ height: "100%", borderRadius: 2, background: "linear-gradient(90deg, #E63946, #FF6B35)", width: `${(sdSpeakingIndex / sdSpeakingOrder.length) * 100}%`, transition: "width .4s ease" }} />
+              </div>
+              {sdSpeakingOrder.length > 0 && sdSpeakingIndex < sdSpeakingOrder.length && (() => {
+                const sp = players[sdSpeakingOrder[sdSpeakingIndex]];
+                return (
+                  <div style={{ ...card, textAlign: "center", padding: "28px 20px", border: "1px solid #E6394644", boxShadow: "0 8px 32px rgba(230,57,70,.15)", animation: "fadeUp .4s ease" }}>
+                    <p style={{ fontSize: 12, color: "var(--text3)", marginBottom: 8, fontFamily: "var(--font-mono)" }}>Tour {sdSpeakingIndex + 1} / {sdSpeakingOrder.length}</p>
+                    <Avatar emoji={sp.emoji} photo={sp.photo} size={60} style={{ margin: "0 auto 12px", border: "3px solid #E63946" }} />
+                    <p style={{ fontSize: 13, color: "var(--text2)", marginBottom: 4 }}>C'est au tour de</p>
+                    <h3 style={{ fontSize: 24, fontWeight: 900, fontFamily: "var(--font-display)", color: "#E63946" }}>{sp.name}</h3>
+                    <p style={{ fontSize: 13, color: "var(--text2)", marginTop: 10 }}>Redonne un indice pour te défendre !</p>
+                    {timerEnabled && <div style={{ marginTop: 14, display: "flex", justifyContent: "center" }}><Timer key={`sd-${sdSpeakingIndex}`} seconds={Math.min(timerSeconds, 30)} onEnd={() => {}} /></div>}
+                  </div>
+                );
+              })()}
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 14, justifyContent: "center" }}>
+                {sdSpeakingOrder.map((pIdx, i) => (
+                  <div key={pIdx} style={{ display: "flex", alignItems: "center", gap: 4, padding: "3px 10px 3px 3px", borderRadius: 20, background: i < sdSpeakingIndex ? "#E6394615" : i === sdSpeakingIndex ? "#E63946" : "var(--surface2)", transition: "all .3s", opacity: i < sdSpeakingIndex ? .5 : 1 }}>
+                    <Avatar emoji={players[pIdx]?.emoji} photo={players[pIdx]?.photo} size={22} style={{ border: "none" }} />
+                    <span style={{ fontSize: 11, fontWeight: 600, color: i === sdSpeakingIndex ? "#fff" : "var(--text3)", textDecoration: i < sdSpeakingIndex ? "line-through" : "none" }}>{players[pIdx]?.name}</span>
+                  </div>
+                ))}
+              </div>
+              <button onClick={() => {
+                if (sdSpeakingIndex < sdSpeakingOrder.length - 1) setSdSpeakingIndex(sdSpeakingIndex + 1);
+                else {
+                  const aliveIdx = players.map((p, i) => (p.alive ? i : -1)).filter((i) => i >= 0);
+                  setSdVoteOrder(shuffle(aliveIdx));
+                  setSdVoteIndex(0);
+                  setSdVoteStep("handoff");
+                  setSdAllSpoken(true);
+                }
+              }} style={{ ...btnPrimaryConst, marginTop: 16, width: "100%", background: "linear-gradient(135deg, #E63946, #FF6B35)" }}>
+                {sdSpeakingIndex < sdSpeakingOrder.length - 1 ? "Joueur suivant →" : "✅ Passer au vote"}
+              </button>
+            </>
+          ) : (
+            <>
+              {sdVoteIndex < sdVoteOrder.length ? (() => {
+                const voterIdx = sdVoteOrder[sdVoteIndex];
+                const voter = players[voterIdx];
+                const sdTargets = tiedPlayers.filter((tIdx) => tIdx !== voterIdx);
+
+                if (sdVoteStep === "handoff") return (
+                  <div style={{ ...card, textAlign: "center", padding: "32px 24px", border: "1px solid #E6394644" }}>
+                    <p style={{ fontSize: 12, color: "var(--text3)", marginBottom: 8, fontFamily: "var(--font-mono)" }}>
+                      Vote {sdVoteIndex + 1} / {sdVoteOrder.length}
+                    </p>
+                    <div style={{ fontSize: 44, marginBottom: 12 }}>🗳️</div>
+                    <p style={{ fontSize: 13, color: "var(--text2)", marginBottom: 4 }}>Passez le téléphone à</p>
+                    <Avatar emoji={voter.emoji} photo={voter.photo} size={64} style={{ margin: "12px auto", border: "3px solid #E63946" }} />
+                    <h3 style={{ fontSize: 24, fontWeight: 900, fontFamily: "var(--font-display)", color: "#E63946" }}>{voter.name}</h3>
+                    <p style={{ fontSize: 12, color: "var(--text3)", marginTop: 12 }}>Les autres, ne regardez pas !</p>
+                    <button onClick={() => setSdVoteStep("choosing")} style={{ ...btnPrimaryConst, width: "100%", marginTop: 20, background: "linear-gradient(135deg, #E63946, #FF6B35)" }}>
+                      👁️ Je suis prêt(e)
+                    </button>
+                  </div>
+                );
+
+                if (sdVoteStep === "choosing") return (
+                  <div style={{ ...card, textAlign: "center", padding: "24px 20px", animation: "fadeUp .3s ease" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 16 }}>
+                      <Avatar emoji={voter.emoji} photo={voter.photo} size={32} style={{ border: "none" }} />
+                      <h3 style={{ fontSize: 18, fontWeight: 800, fontFamily: "var(--font-display)" }}>{voter.name}, qui éliminer ?</h3>
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      {sdTargets.map((tIdx) => (
+                        <button key={tIdx} onClick={() => { castSdVote(voterIdx, tIdx); setSdVoteStep("confirmed"); }} style={{
+                          padding: "14px 16px", borderRadius: 14, cursor: "pointer", fontSize: 15, fontWeight: 600,
+                          transition: "all .2s", border: "2px solid #E6394644", display: "flex", alignItems: "center", gap: 10,
+                          background: "var(--surface2)", color: "var(--text)", width: "100%",
+                        }}>
+                          <Avatar emoji={players[tIdx]?.emoji} photo={players[tIdx]?.photo} size={32} style={{ border: "none" }} />
+                          {players[tIdx]?.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                );
+
+                if (sdVoteStep === "confirmed") return (
+                  <div style={{ ...card, textAlign: "center", padding: "32px 24px", animation: "fadeUp .3s ease" }}>
+                    <div style={{ fontSize: 48, marginBottom: 12 }}>✅</div>
+                    <h3 style={{ fontSize: 20, fontWeight: 800, fontFamily: "var(--font-display)", color: "#E63946" }}>Vote enregistré !</h3>
+                    <p style={{ fontSize: 13, color: "var(--text3)", marginTop: 8 }}>Passe le téléphone au prochain</p>
+                    <button onClick={() => {
+                      if (sdVoteIndex < sdVoteOrder.length - 1) {
+                        setSdVoteIndex(sdVoteIndex + 1);
+                        setSdVoteStep("handoff");
+                      } else {
+                        setSdVoteStep("allvoted");
+                        setSdVoteIndex(sdVoteOrder.length);
+                      }
+                    }} style={{ ...btnPrimaryConst, width: "100%", marginTop: 20, background: "linear-gradient(135deg, #E63946, #FF6B35)" }}>
+                      {sdVoteIndex < sdVoteOrder.length - 1 ? "Votant suivant →" : "Tous les votes sont faits ✓"}
+                    </button>
+                  </div>
+                );
+                return null;
+              })() : (
+                <div style={{ ...card, textAlign: "center", padding: "32px 24px" }}>
+                  <div style={{ fontSize: 48, marginBottom: 12 }}>🔮</div>
+                  <h3 style={{ fontSize: 20, fontWeight: 800, fontFamily: "var(--font-display)" }}>Tous les votes sont tombés !</h3>
+                  <p style={{ fontSize: 13, color: "var(--text2)", marginTop: 8, marginBottom: 20 }}>{sdVoteOrder.length} votes secrets</p>
+                  <button onClick={resolveSd} style={{ ...btnPrimaryConst, width: "100%", fontSize: 18, background: "linear-gradient(135deg, #E63946, #FF6B35)" }}>
+                    ⚡ Résoudre
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ═══════════ RESULTS ═══════════
+  if (screen === "results") {
+    const ucPlayers = players.filter((p) => p.role === "undercover" || p.role === "mrwhite");
+    const civilWin = winner === "civil";
+    const singleUC = ucPlayers.length === 1;
+
+    const wt = civilWin
+      ? "Les Civils gagnent !"
+      : singleUC
+        ? `${ucPlayers[0].name} remporte la partie !`
+        : "Les Undercovers gagnent !";
+    const wc = civilWin ? "var(--accent)" : "#E63946";
+
+    return (
+      <div style={{ ...cs, justifyContent: "center" }}><style>{cssVars}</style>
+        <style>{`
+          @keyframes resultsPop { 0% { transform: scale(0); opacity: 0; } 60% { transform: scale(1.15); } 100% { transform: scale(1); opacity: 1; } }
+          @keyframes resultsFloat { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+          @keyframes resultsConfetti { 0% { transform: translateY(0) rotate(0); opacity:1; } 100% { transform: translateY(-160px) translateX(var(--dx)) rotate(var(--rot)); opacity:0; } }
+          @keyframes resultsFadeIn { 0% { transform: translateY(20px); opacity: 0; } 100% { transform: translateY(0); opacity: 1; } }
+        `}</style>
+
+        {/* Confetti */}
+        {["🎉","⭐","✨","🎊","🏆","💥","🔥","🎯","🥳","💎"].map((e, i) => (
+          <div key={i} style={{
+            position: "fixed", top: `${50 + Math.sin(i) * 20}%`, left: `${5 + i * 9.5}%`,
+            fontSize: 20 + (i % 3) * 8, pointerEvents: "none",
+            animation: `resultsConfetti ${2 + i * 0.2}s ease-out ${i * 0.15}s forwards`,
+            ["--dx"]: `${-60 + i * 15}px`, ["--rot"]: `${360 + i * 90}deg`,
+          }}>{e}</div>
+        ))}
+
+        <div style={{ textAlign: "center", animation: "resultsPop .6s cubic-bezier(.34,1.56,.64,1) forwards" }}>
+          {/* Winner showcase */}
+          {civilWin ? (
+            <div style={{ fontSize: 80, marginBottom: 16, animation: "resultsFloat 2s ease-in-out infinite" }}>🎉</div>
+          ) : (
+            <div style={{ marginBottom: 20 }}>
+              {singleUC ? (
+                <div style={{ animation: "resultsFloat 2s ease-in-out infinite" }}>
+                  <Avatar emoji={ucPlayers[0].emoji} photo={ucPlayers[0].photo} size={100} style={{
+                    margin: "0 auto", border: `4px solid #E63946`,
+                    boxShadow: "0 0 40px #E6394666, 0 0 80px #E6394633",
+                  }} />
+                </div>
+              ) : (
+                <div style={{ display: "flex", justifyContent: "center", gap: 12, animation: "resultsFloat 2s ease-in-out infinite" }}>
+                  {ucPlayers.map((p, i) => (
+                    <Avatar key={i} emoji={p.emoji} photo={p.photo} size={72} style={{
+                      border: `3px solid #E63946`,
+                      boxShadow: "0 0 30px #E6394644",
+                    }} />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          <h1 style={{
+            fontFamily: "var(--font-display)", fontSize: civilWin ? 32 : 28, fontWeight: 900,
+            color: wc, lineHeight: 1.2, maxWidth: 340, margin: "0 auto",
+          }}>{wt}</h1>
+
+          {!civilWin && singleUC && (
+            <p style={{ color: "#FF6B35", fontSize: 14, fontWeight: 600, marginTop: 8, animation: "resultsFadeIn .5s ease .3s both" }}>
+              🕵️ L'Undercover a bluffé tout le monde !
+            </p>
+          )}
+          {!civilWin && !singleUC && (
+            <p style={{ color: "#FF6B35", fontSize: 14, fontWeight: 600, marginTop: 8, animation: "resultsFadeIn .5s ease .3s both" }}>
+              🕵️ {ucPlayers.map((p) => p.name).join(" & ")} ont bluffé tout le monde !
+            </p>
+          )}
+        </div>
+
+        <div style={{ ...card, width: "100%", maxWidth: 360, marginTop: 32, animation: "resultsFadeIn .5s ease .4s both" }}>
+          <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 12 }}>Récapitulatif</h3>
+          {players.map((p, i) => {
+            const rc = p.role === "civil" ? "var(--accent)" : p.role === "undercover" ? "#E63946" : "#888";
+            return (
+              <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: "1px solid var(--border)" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <Avatar emoji={p.emoji} photo={p.photo} size={28} style={{ border: "none" }} />
+                  <span style={{ fontWeight: 600, fontSize: 14 }}>{p.name}</span>
+                  <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 8, background: rc + "22", color: rc }}>
+                    {p.role === "civil" ? "Civil" : p.role === "undercover" ? "Undercover" : "Mr. White"}
+                  </span>
+                  {!p.alive && <span style={{ fontSize: 11 }}>☠️</span>}
+                </div>
+                <span style={{ fontSize: 13, color: "var(--text2)", fontStyle: "italic" }}>{p.word}</span>
+              </div>
+            );
+          })}
+        </div>
+        <div style={{ display: "flex", gap: 12, marginTop: 24, width: "100%", maxWidth: 360, animation: "resultsFadeIn .5s ease .6s both" }}>
+          <button onClick={newRound} style={{ ...btnPrimaryConst, flex: 1 }}>🔄 Nouvelle manche</button>
+          <button onClick={() => { setScores({}); setRound(1); setUsedPairs([]); transition(() => setScreen("home")); }} style={{ ...btnSecondaryConst, flex: 1 }}>🏠 Accueil</button>
+        </div>
+      </div>
+    );
+  }
+
+  return null;
+}
+
+// ─── STYLES ──────────────────────────────────────────────────
+const cssVars = `
+  @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800;900&family=Space+Mono:wght@400;700&family=Sora:wght@400;600;700;800&display=swap');
+  :root {
+    --bg: #0C0C14; --surface: #14141F; --surface2: #1E1E2E; --border: #2A2A3C;
+    --text: #E8E8F0; --text2: #8888A0; --text3: #555570;
+    --accent: #6C5CE7; --accent2: #A855F7;
+    --font: 'Outfit', sans-serif; --font-display: 'Sora', sans-serif; --font-mono: 'Space Mono', monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); }
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes pulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.08); opacity: .7; } }
+  @keyframes bounce { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.15); } }
+  input::placeholder { color: var(--text3); }
+`;
+
+const btnPrimaryConst = { background: "linear-gradient(135deg, var(--accent), var(--accent2))", color: "#fff", border: "none", borderRadius: 14, padding: "16px 32px", fontSize: 16, fontWeight: 700, fontFamily: "var(--font)", cursor: "pointer", transition: "all .2s", letterSpacing: .3 };
+const btnSecondaryConst = { background: "var(--surface2)", color: "var(--text2)", border: "1px solid var(--border)", borderRadius: 14, padding: "16px 32px", fontSize: 16, fontWeight: 700, fontFamily: "var(--font)", cursor: "pointer", transition: "all .2s" };
+const btnBack = { background: "none", border: "none", color: "var(--text2)", fontSize: 14, cursor: "pointer", alignSelf: "flex-start", marginBottom: 16, fontFamily: "var(--font)" };
+const btnSmall = { width: 40, height: 40, borderRadius: 12, border: "none", background: "var(--surface2)", color: "var(--text)", fontSize: 20, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "var(--font-mono)" };
+const card = { background: "var(--surface)", borderRadius: 18, padding: "20px 20px", border: "1px solid var(--border)", width: "100%", maxWidth: 400, marginTop: 12 };
+const labelStyle = { fontSize: 13, fontWeight: 700, color: "var(--text2)", textTransform: "uppercase", letterSpacing: 1.5 };
+const sectionTitle = { fontFamily: "var(--font-display)", fontSize: 24, fontWeight: 800, marginBottom: 8 };
+const chipStyle = { padding: "12px 8px", borderRadius: 14, cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 4, transition: "all .2s", border: "none", fontFamily: "var(--font)" };
+const chipStyleSmall = { padding: "10px 6px", borderRadius: 12, cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 4, transition: "all .2s", border: "none", fontFamily: "var(--font)" };
+const inputStyle = { width: "100%", padding: "12px 16px", borderRadius: 12, border: "1px solid var(--border)", background: "var(--surface2)", color: "var(--text)", fontSize: 15, fontFamily: "var(--font)", outline: "none", marginTop: 8 };
+
+    // ─── RENDER ───
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(React.createElement(UndercoverApp));
+
+    // Hide splash
+    setTimeout(() => {
+      const splash = document.getElementById('splash');
+      if (splash) { splash.classList.add('hide'); setTimeout(() => splash.remove(), 500); }
+    }, 800);
+  </script>
+
+  <script>
+    // PWA Service Worker
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js')
+          .then((r) => console.log('SW registered:', r.scope))
+          .catch((e) => console.log('SW failed:', e));
+      });
+    }
+
+    // iOS standalone — prevent pull-to-refresh only, not scroll
+    if (window.navigator.standalone) {
+      document.addEventListener('touchmove', function(e) {
+        if (e.target.closest('#root')) return; // allow scroll inside app
+        e.preventDefault();
+      }, { passive: false });
+    }
+  </script>
+</body>
+</html>
