@@ -356,8 +356,12 @@ function generateWords(theme, difficulty, mixThemes, usedPairs = []) {
 
   // Resolve pool
   let pool;
-  if (theme === "mix" && mixThemes?.length >= 2) {
-    const validThemes = mixThemes.filter((t) => t !== "custom" && t !== "mix");
+  if (theme === "mix") {
+    // Use selected sub-themes if 2+, otherwise default to ALL available themes
+    let validThemes = (mixThemes || []).filter((t) => t !== "custom" && t !== "mix");
+    if (validThemes.length < 2) {
+      validThemes = Object.keys(WORD_DB).filter((t) => t !== "custom");
+    }
     pool = [];
     for (const t of validThemes) pool.push(...getDiffPairs(t, difficulty));
   } else {
@@ -627,6 +631,7 @@ const UndercoverApp = function UndercoverApp() {
   const [customMW, setCustomMW] = useState(0);
   const [timerEnabled, setTimerEnabled] = useState(true);
   const [timerSeconds, setTimerSeconds] = useState(45);
+  const [quickVote, setQuickVote] = useState(false);
   const [scores, setScores] = useState({});
   const [round, setRound] = useState(1);
   const [usedPairs, setUsedPairs] = useState([]);
@@ -646,7 +651,7 @@ const UndercoverApp = function UndercoverApp() {
   // Anonymous vote states
   const [voteOrder, setVoteOrder] = useState([]);
   const [voteIndex, setVoteIndex] = useState(0);
-  const [voteStep, setVoteStep] = useState("handoff"); // handoff | choosing | confirmed
+  const [voteStep, setVoteStep] = useState("choosing"); // choosing | confirmed
 
   const [tiedPlayers, setTiedPlayers] = useState([]);
   const [suddenDeathCount, setSuddenDeathCount] = useState(0);
@@ -658,7 +663,7 @@ const UndercoverApp = function UndercoverApp() {
   const [sdSpeakingOrder, setSdSpeakingOrder] = useState([]);
   const [sdVoteOrder, setSdVoteOrder] = useState([]);
   const [sdVoteIndex, setSdVoteIndex] = useState(0);
-  const [sdVoteStep, setSdVoteStep] = useState("handoff");
+  const [sdVoteStep, setSdVoteStep] = useState("choosing");
   const MAX_SUDDEN_DEATH = 2;
 
   const [cameraOpenFor, setCameraOpenFor] = useState(null); // player index or null
@@ -743,7 +748,7 @@ const UndercoverApp = function UndercoverApp() {
     const alive = players.map((p, i) => (p.alive ? i : -1)).filter((i) => i >= 0);
     setVoteOrder(shuffle(alive));
     setVoteIndex(0);
-    setVoteStep("handoff");
+    setVoteStep("choosing");
     setVotes({});
     setGamePhase("vote");
   };
@@ -864,6 +869,22 @@ const UndercoverApp = function UndercoverApp() {
   };
 
   const newRound = () => { setRound((r) => r + 1); transition(() => setScreen("setup")); };
+
+  // Quick mode: user taps the player to eliminate directly (no in-app vote).
+  // Used for both the main vote phase and sudden-death phase when quickVote is enabled.
+  const quickEliminate = (idx) => {
+    const up = elim(idx);
+    const winType = detectWin(up);
+    showElimReveal(idx, up, () => {
+      if (winType) {
+        applyWin(winType, up);
+        transition(() => setScreen("results"));
+      } else {
+        setSuddenDeathCount(0); setTiedPlayers([]);
+        setScreen("game"); startDescribePhase(up); setVotes({});
+      }
+    }, winType);
+  };
 
   const getAlive = () => players.map((p, i) => ({ ...p, idx: i })).filter((p) => p.alive);
   const lastElim = eliminated.length > 0 ? players[eliminated[eliminated.length - 1]] : null;
@@ -1019,6 +1040,17 @@ const UndercoverApp = function UndercoverApp() {
             ))}
           </div>
         )}
+      </div>
+      <div style={card}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div>
+            <label style={labelStyle}>Partie rapide</label>
+            <p style={{ fontSize: 11, color: "var(--text3)", marginTop: 4, lineHeight: 1.4 }}>Pas de vote sur l'app — choisis directement la personne éliminée</p>
+          </div>
+          <button onClick={() => setQuickVote(!quickVote)} style={{ width: 48, height: 26, borderRadius: 13, border: "none", cursor: "pointer", background: quickVote ? "var(--accent)" : "var(--surface2)", position: "relative", transition: "background .3s", flexShrink: 0, marginLeft: 12 }}>
+            <div style={{ width: 20, height: 20, borderRadius: "50%", background: "#fff", position: "absolute", top: 3, left: quickVote ? 25 : 3, transition: "left .3s" }} />
+          </button>
+        </div>
       </div>
       <button onClick={() => transition(() => setScreen("names"))} disabled={mode === "perso" && customUC + customMW >= playerCount} style={{ ...btnPrimaryConst, marginTop: 16, marginBottom: 40, opacity: (mode === "perso" && customUC + customMW >= playerCount) ? 0.4 : 1 }}>Suivant →</button>
     </div>
@@ -1203,33 +1235,40 @@ const UndercoverApp = function UndercoverApp() {
           )}
 
           {/* ── VOTE PHASE (Anonymous) ── */}
-          {gamePhase === "vote" && (
+          {gamePhase === "vote" && quickVote && (
+            <div style={{ ...card, padding: "20px 16px" }}>
+              <div style={{ textAlign: "center", marginBottom: 16 }}>
+                <div style={{ fontSize: 36, marginBottom: 6 }}>🗳️</div>
+                <p style={{ fontSize: 15, fontWeight: 700 }}>Qui est éliminé ?</p>
+                <p style={{ fontSize: 12, color: "var(--text3)", marginTop: 4 }}>Votez à l'oral, puis tapez la personne éliminée</p>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {alive.map((p) => (
+                  <button key={p.idx} onClick={() => quickEliminate(p.idx)} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", borderRadius: 14, background: "var(--surface2)", border: "2px solid transparent", cursor: "pointer", textAlign: "left", transition: "all .2s" }} onMouseEnter={(e) => { e.currentTarget.style.borderColor = "#E63946"; e.currentTarget.style.background = "#E6394611"; }} onMouseLeave={(e) => { e.currentTarget.style.borderColor = "transparent"; e.currentTarget.style.background = "var(--surface2)"; }}>
+                    <Avatar emoji={p.emoji} photo={p.photo} size={36} />
+                    <span style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", flex: 1 }}>{p.name}</span>
+                    <span style={{ fontSize: 18 }}>❌</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {gamePhase === "vote" && !quickVote && (
             <>
               {voteIndex < voteOrder.length ? (() => {
                 const voterIdx = voteOrder[voteIndex];
                 const voter = players[voterIdx];
                 const targets = alive.filter((t) => t.idx !== voterIdx);
-
-                // Handoff screen — pass the phone
-                if (voteStep === "handoff") return (
-                  <div style={{ ...card, textAlign: "center", padding: "32px 24px", border: "1px solid var(--accent)44" }}>
-                    <p style={{ fontSize: 12, color: "var(--text3)", marginBottom: 8, fontFamily: "var(--font-mono)" }}>
-                      Vote {voteIndex + 1} / {voteOrder.length}
-                    </p>
-                    <div style={{ fontSize: 44, marginBottom: 12 }}>🗳️</div>
-                    <p style={{ fontSize: 13, color: "var(--text2)", marginBottom: 4 }}>Passez le téléphone à</p>
-                    <Avatar emoji={voter.emoji} photo={voter.photo} size={64} style={{ margin: "12px auto", border: "3px solid var(--accent)" }} />
-                    <h3 style={{ fontSize: 24, fontWeight: 900, fontFamily: "var(--font-display)", color: "var(--accent)" }}>{voter.name}</h3>
-                    <p style={{ fontSize: 12, color: "var(--text3)", marginTop: 12 }}>Les autres, ne regardez pas !</p>
-                    <button onClick={() => setVoteStep("choosing")} style={{ ...btnPrimaryConst, width: "100%", marginTop: 20 }}>
-                      👁️ Je suis prêt(e)
-                    </button>
-                  </div>
-                );
+                const isLast = voteIndex >= voteOrder.length - 1;
+                const nextVoter = !isLast ? players[voteOrder[voteIndex + 1]] : null;
 
                 // Choosing screen — pick a target
                 if (voteStep === "choosing") return (
                   <div style={{ ...card, textAlign: "center", padding: "24px 20px", animation: "fadeUp .3s ease" }}>
+                    <p style={{ fontSize: 12, color: "var(--text3)", marginBottom: 12, fontFamily: "var(--font-mono)" }}>
+                      Vote {voteIndex + 1} / {voteOrder.length}
+                    </p>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 16 }}>
                       <Avatar emoji={voter.emoji} photo={voter.photo} size={32} style={{ border: "none" }} />
                       <h3 style={{ fontSize: 18, fontWeight: 800, fontFamily: "var(--font-display)" }}>{voter.name}, qui éliminer ?</h3>
@@ -1249,22 +1288,31 @@ const UndercoverApp = function UndercoverApp() {
                   </div>
                 );
 
-                // Confirmed screen
+                // Confirmed screen — also acts as handoff to next voter
                 if (voteStep === "confirmed") return (
-                  <div style={{ ...card, textAlign: "center", padding: "32px 24px", animation: "fadeUp .3s ease" }}>
-                    <div style={{ fontSize: 48, marginBottom: 12 }}>✅</div>
-                    <h3 style={{ fontSize: 20, fontWeight: 800, fontFamily: "var(--font-display)", color: "var(--accent)" }}>Vote enregistré !</h3>
-                    <p style={{ fontSize: 13, color: "var(--text3)", marginTop: 8 }}>Passe le téléphone au prochain votant</p>
+                  <div style={{ ...card, textAlign: "center", padding: "28px 24px", animation: "fadeUp .3s ease" }}>
+                    <div style={{ fontSize: 40, marginBottom: 8 }}>✅</div>
+                    <h3 style={{ fontSize: 18, fontWeight: 800, fontFamily: "var(--font-display)", color: "var(--accent)" }}>Vote enregistré !</h3>
+                    {nextVoter ? (
+                      <>
+                        <p style={{ fontSize: 13, color: "var(--text2)", marginTop: 16, marginBottom: 4 }}>Passe le téléphone à</p>
+                        <Avatar emoji={nextVoter.emoji} photo={nextVoter.photo} size={56} style={{ margin: "8px auto", border: "3px solid var(--accent)" }} />
+                        <h4 style={{ fontSize: 22, fontWeight: 900, fontFamily: "var(--font-display)", color: "var(--accent)" }}>{nextVoter.name}</h4>
+                        <p style={{ fontSize: 11, color: "var(--text3)", marginTop: 8 }}>Les autres, ne regardez pas !</p>
+                      </>
+                    ) : (
+                      <p style={{ fontSize: 13, color: "var(--text3)", marginTop: 8 }}>Tous les votes sont faits</p>
+                    )}
                     <button onClick={() => {
-                      if (voteIndex < voteOrder.length - 1) {
+                      if (!isLast) {
                         setVoteIndex(voteIndex + 1);
-                        setVoteStep("handoff");
+                        setVoteStep("choosing");
                       } else {
                         setVoteStep("allvoted");
                         setVoteIndex(voteOrder.length);
                       }
                     }} style={{ ...btnPrimaryConst, width: "100%", marginTop: 20 }}>
-                      {voteIndex < voteOrder.length - 1 ? "Votant suivant →" : "Tous les votes sont faits ✓"}
+                      {!isLast ? "Votant suivant →" : "Tous les votes sont faits ✓"}
                     </button>
                   </div>
                 );
@@ -1559,7 +1607,7 @@ const UndercoverApp = function UndercoverApp() {
                   const aliveIdx = players.map((p, i) => (p.alive ? i : -1)).filter((i) => i >= 0);
                   setSdVoteOrder(shuffle(aliveIdx));
                   setSdVoteIndex(0);
-                  setSdVoteStep("handoff");
+                  setSdVoteStep("choosing");
                   setSdAllSpoken(true);
                 }
               }} style={{ ...btnPrimaryConst, marginTop: 16, width: "100%", background: "linear-gradient(135deg, #E63946, #FF6B35)" }}>
@@ -1572,25 +1620,14 @@ const UndercoverApp = function UndercoverApp() {
                 const voterIdx = sdVoteOrder[sdVoteIndex];
                 const voter = players[voterIdx];
                 const sdTargets = tiedPlayers.filter((tIdx) => tIdx !== voterIdx);
-
-                if (sdVoteStep === "handoff") return (
-                  <div style={{ ...card, textAlign: "center", padding: "32px 24px", border: "1px solid #E6394644" }}>
-                    <p style={{ fontSize: 12, color: "var(--text3)", marginBottom: 8, fontFamily: "var(--font-mono)" }}>
-                      Vote {sdVoteIndex + 1} / {sdVoteOrder.length}
-                    </p>
-                    <div style={{ fontSize: 44, marginBottom: 12 }}>🗳️</div>
-                    <p style={{ fontSize: 13, color: "var(--text2)", marginBottom: 4 }}>Passez le téléphone à</p>
-                    <Avatar emoji={voter.emoji} photo={voter.photo} size={64} style={{ margin: "12px auto", border: "3px solid #E63946" }} />
-                    <h3 style={{ fontSize: 24, fontWeight: 900, fontFamily: "var(--font-display)", color: "#E63946" }}>{voter.name}</h3>
-                    <p style={{ fontSize: 12, color: "var(--text3)", marginTop: 12 }}>Les autres, ne regardez pas !</p>
-                    <button onClick={() => setSdVoteStep("choosing")} style={{ ...btnPrimaryConst, width: "100%", marginTop: 20, background: "linear-gradient(135deg, #E63946, #FF6B35)" }}>
-                      👁️ Je suis prêt(e)
-                    </button>
-                  </div>
-                );
+                const isLastSd = sdVoteIndex >= sdVoteOrder.length - 1;
+                const nextSdVoter = !isLastSd ? players[sdVoteOrder[sdVoteIndex + 1]] : null;
 
                 if (sdVoteStep === "choosing") return (
                   <div style={{ ...card, textAlign: "center", padding: "24px 20px", animation: "fadeUp .3s ease" }}>
+                    <p style={{ fontSize: 12, color: "var(--text3)", marginBottom: 12, fontFamily: "var(--font-mono)" }}>
+                      Vote {sdVoteIndex + 1} / {sdVoteOrder.length}
+                    </p>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 16 }}>
                       <Avatar emoji={voter.emoji} photo={voter.photo} size={32} style={{ border: "none" }} />
                       <h3 style={{ fontSize: 18, fontWeight: 800, fontFamily: "var(--font-display)" }}>{voter.name}, qui éliminer ?</h3>
@@ -1611,20 +1648,29 @@ const UndercoverApp = function UndercoverApp() {
                 );
 
                 if (sdVoteStep === "confirmed") return (
-                  <div style={{ ...card, textAlign: "center", padding: "32px 24px", animation: "fadeUp .3s ease" }}>
-                    <div style={{ fontSize: 48, marginBottom: 12 }}>✅</div>
-                    <h3 style={{ fontSize: 20, fontWeight: 800, fontFamily: "var(--font-display)", color: "#E63946" }}>Vote enregistré !</h3>
-                    <p style={{ fontSize: 13, color: "var(--text3)", marginTop: 8 }}>Passe le téléphone au prochain</p>
+                  <div style={{ ...card, textAlign: "center", padding: "28px 24px", animation: "fadeUp .3s ease" }}>
+                    <div style={{ fontSize: 40, marginBottom: 8 }}>✅</div>
+                    <h3 style={{ fontSize: 18, fontWeight: 800, fontFamily: "var(--font-display)", color: "#E63946" }}>Vote enregistré !</h3>
+                    {nextSdVoter ? (
+                      <>
+                        <p style={{ fontSize: 13, color: "var(--text2)", marginTop: 16, marginBottom: 4 }}>Passe le téléphone à</p>
+                        <Avatar emoji={nextSdVoter.emoji} photo={nextSdVoter.photo} size={56} style={{ margin: "8px auto", border: "3px solid #E63946" }} />
+                        <h4 style={{ fontSize: 22, fontWeight: 900, fontFamily: "var(--font-display)", color: "#E63946" }}>{nextSdVoter.name}</h4>
+                        <p style={{ fontSize: 11, color: "var(--text3)", marginTop: 8 }}>Les autres, ne regardez pas !</p>
+                      </>
+                    ) : (
+                      <p style={{ fontSize: 13, color: "var(--text3)", marginTop: 8 }}>Tous les votes sont faits</p>
+                    )}
                     <button onClick={() => {
-                      if (sdVoteIndex < sdVoteOrder.length - 1) {
+                      if (!isLastSd) {
                         setSdVoteIndex(sdVoteIndex + 1);
-                        setSdVoteStep("handoff");
+                        setSdVoteStep("choosing");
                       } else {
                         setSdVoteStep("allvoted");
                         setSdVoteIndex(sdVoteOrder.length);
                       }
                     }} style={{ ...btnPrimaryConst, width: "100%", marginTop: 20, background: "linear-gradient(135deg, #E63946, #FF6B35)" }}>
-                      {sdVoteIndex < sdVoteOrder.length - 1 ? "Votant suivant →" : "Tous les votes sont faits ✓"}
+                      {!isLastSd ? "Votant suivant →" : "Tous les votes sont faits ✓"}
                     </button>
                   </div>
                 );
