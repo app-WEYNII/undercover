@@ -1278,8 +1278,12 @@ const UndercoverApp = function UndercoverApp() {
           // Mark as connected
           setPlayers((prev) => prev.map((p, i) => i === slot ? { ...p, connected: true } : p));
         }
-        // Send current full state snapshot to the new client
-        setTimeout(() => sendToConn(conn, buildSnapshot()), 60);
+        // Send snapshot ONLY if a game is in progress (not in lobby).
+        // During lobby, the "lobby" message is enough — sending a snapshot would overwrite
+        // lobbyPlayers with an empty list because game `players` array is still empty.
+        if (screen !== "multi_lobby" && players.length > 0) {
+          setTimeout(() => sendToConn(conn, buildSnapshot()), 60);
+        }
         break;
       }
       case "leave": {
@@ -1406,18 +1410,19 @@ const UndercoverApp = function UndercoverApp() {
         setVoteCounts(s.voteCounts || { done: 0, total: 0 });
         setSdVoteCounts(s.sdVoteCounts || { done: 0, total: 0 });
         setVoteCountdown(s.voteCountdown || 0);
-        // For lobby compatibility: also update lobbyPlayers to match
-        setLobbyPlayers((s.players || []).map((p) => ({
-          playerId: p.playerId, name: p.name, emoji: p.emoji, photo: p.photo, connected: p.connected !== false,
-        })));
-        // Update our own players array (with sanitized info)
-        setPlayers(s.players.map((p) => ({
-          playerId: p.playerId, name: p.name, emoji: p.emoji, photo: p.photo,
-          alive: p.alive, role: p.role, word: p.word, connected: p.connected,
-        })));
-        // Find own slot
-        const idx = (s.players || []).findIndex((p) => p.playerId === myPlayerIdRef.current);
-        if (idx >= 0) setMySlotIdx(idx);
+        // NOTE: We deliberately do NOT update lobbyPlayers from the state snapshot.
+        // The lobby is managed exclusively by the "lobby" messages — a state snapshot
+        // during lobby phase would have an empty players array and would wipe the lobby.
+        // Update our own players array (with sanitized info) — only when game has started
+        if (s.players && s.players.length > 0) {
+          setPlayers(s.players.map((p) => ({
+            playerId: p.playerId, name: p.name, emoji: p.emoji, photo: p.photo,
+            alive: p.alive, role: p.role, word: p.word, connected: p.connected,
+          })));
+          // Find own slot
+          const idx = s.players.findIndex((p) => p.playerId === myPlayerIdRef.current);
+          if (idx >= 0) setMySlotIdx(idx);
+        }
         // Reset vote state when entering a fresh vote phase
         if (s.gamePhase === "describe") { setIVoted(false); setISdVoted(false); }
         break;
