@@ -67,6 +67,8 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.26.2/babel.min.js"></script>
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 
   <script type="text/babel" data-type="module">
     const { useState, useEffect, useRef } = React;
@@ -392,7 +394,6 @@ const THEMES = [
   { id: "sport", label: "Sport", icon: "⚽", color: "#2EC4B6" },
   { id: "pays_villes", label: "Pays / Villes", icon: "🌍", color: "#F4A261" },
   { id: "fun", label: "Fun", icon: "🤪", color: "#FF006E" },
-  { id: "custom", label: "Personnalisé", icon: "✏️", color: "#8AC926" },
   { id: "mix", label: "Mix Thèmes", icon: "🎲", color: "#FFD166" },
 ];
 
@@ -613,6 +614,40 @@ const CameraModal = ({ onCapture, onClose }) => {
   );
 };
 
+// ─── MULTI / PEERJS HELPERS ────────────────────────────────────
+const ROOM_PREFIX = "wundercover-";
+const ROOM_CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no I/O/0/1 ambiguity
+const generateRoomCode = () => {
+  let s = "";
+  for (let i = 0; i < 6; i++) s += ROOM_CODE_CHARS[Math.floor(Math.random() * ROOM_CODE_CHARS.length)];
+  return s;
+};
+const generatePlayerId = () => "p" + Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
+
+const QRCanvas = ({ value, size = 160 }) => {
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!ref.current || !value || typeof QRCode === "undefined") return;
+    ref.current.innerHTML = "";
+    new QRCode(ref.current, { text: value, width: size, height: size, correctLevel: QRCode.CorrectLevel.M, colorDark: "#0C0C14", colorLight: "#FFFFFF" });
+  }, [value, size]);
+  return <div ref={ref} style={{ display: "inline-block", padding: 8, background: "#fff", borderRadius: 12 }} />;
+};
+
+// Strip private fields from a player record before broadcasting state.
+// Eliminated players' role/word are public (revealed). Alive players' are private.
+// When `revealAll` is true (game ended), everyone's role/word becomes public.
+const sanitizePlayersForBroadcast = (players, revealAll) => players.map((p) => ({
+  playerId: p.playerId,
+  name: p.name,
+  emoji: p.emoji,
+  photo: p.photo,
+  alive: p.alive,
+  connected: p.connected !== false,
+  role: (revealAll || !p.alive) ? p.role : null,
+  word: (revealAll || !p.alive) ? p.word : null,
+}));
+
 // ─── MAIN APP ────────────────────────────────────────────────
 const UndercoverApp = function UndercoverApp() {
   const [screen, setScreen] = useState("home");
@@ -625,8 +660,6 @@ const UndercoverApp = function UndercoverApp() {
   const [mixThemes, setMixThemes] = useState([]);
   const [difficulty, setDifficulty] = useState("moyen");
   const [mode, setMode] = useState("classique");
-  const [customWords, setCustomWords] = useState(["", ""]);
-  const [useCustom, setUseCustom] = useState(false);
   const [customUC, setCustomUC] = useState(1);
   const [customMW, setCustomMW] = useState(0);
   const [timerEnabled, setTimerEnabled] = useState(true);
@@ -675,6 +708,39 @@ const UndercoverApp = function UndercoverApp() {
   const [fadeIn, setFadeIn] = useState(true);
   const transition = (next) => { setFadeIn(false); setTimeout(() => { next(); setFadeIn(true); }, 300); };
 
+  // ── MULTI / PEERJS STATE ──
+  const [playMode, setPlayMode] = useState("solo"); // "solo" | "multi"
+  const [isHost, setIsHost] = useState(false);
+  const [roomCode, setRoomCode] = useState("");
+  const [myPlayerId, setMyPlayerId] = useState(""); // own id (host or client)
+  const [myPseudo, setMyPseudo] = useState("");
+  const [myEmoji, setMyEmoji] = useState("😎");
+  const [myPhoto, setMyPhoto] = useState(null);
+  const [mySlotIdx, setMySlotIdx] = useState(-1); // index in players once game starts
+  const [myWord, setMyWord] = useState(null); // own word (set when game starts)
+  const [myRole, setMyRole] = useState(null); // own role
+  const [lobbyPlayers, setLobbyPlayers] = useState([]); // [{playerId,name,emoji,photo,connected}]
+  const [slotsCount, setSlotsCount] = useState(5);
+  const [joinCode, setJoinCode] = useState("");
+  const [networkError, setNetworkError] = useState("");
+  const [hostPlayerId, setHostPlayerId] = useState(""); // who is the host
+  const [voteCounts, setVoteCounts] = useState({ done: 0, total: 0 }); // for clients to see progress
+  const [sdVoteCounts, setSdVoteCounts] = useState({ done: 0, total: 0 });
+  const [voteCountdown, setVoteCountdown] = useState(0); // 3,2,1,0 before reveal
+  const [iVoted, setIVoted] = useState(false);
+  const [iSdVoted, setISdVoted] = useState(false);
+  const [iAmReadyForReveal, setIAmReadyForReveal] = useState(false);
+  // Refs for PeerJS
+  const peerRef = useRef(null);
+  const connsRef = useRef(new Map()); // host: playerId -> DataConnection
+  const hostConnRef = useRef(null);   // client: connection to host
+  const isHostRef = useRef(false);    // mirror of isHost for use in refs/handlers
+  const myPlayerIdRef = useRef("");
+  const broadcastRef = useRef(null);  // will hold the broadcast function
+  const isClient = playMode === "multi" && !isHost;
+  // Wake lock
+  const wakeLockRef = useRef(null);
+
   const defaultEmojis = ["😎","🤠","🥳","🧑‍🎤","🦊","🐱","🐸","🦄","🤖","👽","🎃","🐼","🦁","🐧","🐙","🦋","🍎","🍊","⭐","🔥"];
 
   useEffect(() => {
@@ -708,14 +774,15 @@ const UndercoverApp = function UndercoverApp() {
     setSpeakingIndex(0);
     setAllSpoken(false);
     setGamePhase("describe");
+    setIVoted(false);
+    setISdVoted(false);
+    setVoteCountdown(0);
   };
 
   // ── Game logic ──
   const startGame = () => {
     let words;
-    if (useCustom && customWords[0] && customWords[1]) {
-      words = [customWords[0], customWords[1]];
-    } else {
+    {
       const result = generateWords(theme, difficulty, mixThemes, usedPairs);
       words = result.pair;
       setUsedPairs((prev) => [...prev, result.key]);
@@ -731,6 +798,47 @@ const UndercoverApp = function UndercoverApp() {
     setEliminated([]); setVotes({}); setWinner(null);
     setSuddenDeathCount(0); setTiedPlayers([]); setSuddenDeathVotes({});
     setTieMessage(""); setRandomElimMessage("");
+    transition(() => setScreen("reveal"));
+  };
+
+  // Multi version: lobbyList = [{playerId, name, emoji, photo}, ...] in order (host first)
+  const startGameMulti = (lobbyList) => {
+    const result = generateWords(theme, difficulty, mixThemes, usedPairs);
+    const words = result.pair;
+    setUsedPairs((prev) => [...prev, result.key]);
+    const count = lobbyList.length;
+    const roles = assignRoles(count, mode, customUC, customMW);
+    const np = lobbyList.map((p, i) => ({
+      playerId: p.playerId,
+      name: p.name,
+      emoji: p.emoji,
+      photo: p.photo,
+      role: roles[i],
+      word: roles[i] === "civil" ? words[0] : roles[i] === "undercover" ? words[1] : "???",
+      alive: true,
+      connected: true,
+    }));
+    setPlayers(np);
+    setRevealIndex(0); setWordVisible(false);
+    setEliminated([]); setVotes({}); setWinner(null);
+    setSuddenDeathCount(0); setTiedPlayers([]); setSuddenDeathVotes({});
+    setTieMessage(""); setRandomElimMessage("");
+    setVoteCountdown(0); setIVoted(false); setISdVoted(false);
+
+    // Send each non-host player their private role/word
+    np.forEach((p, idx) => {
+      if (p.playerId === myPlayerId) {
+        // Host: set own state
+        setMySlotIdx(idx);
+        setMyWord(p.word);
+        setMyRole(p.role);
+      } else {
+        const conn = connsRef.current.get(p.playerId);
+        if (conn) sendToConn(conn, { type: "your_role", word: p.word, role: p.role, slotIdx: idx });
+      }
+    });
+
+    // Move everyone to reveal screen — host triggers transition; clients follow via state broadcast effect
     transition(() => setScreen("reveal"));
   };
 
@@ -895,6 +1003,476 @@ const UndercoverApp = function UndercoverApp() {
     opacity: fadeIn ? 1 : 0, transition: "opacity .3s ease", overflowX: "hidden",
   };
 
+  // ─────────────────────────────────────────────────────
+  // ─── NETWORKING (PeerJS) ─────────────────────────────
+  // ─────────────────────────────────────────────────────
+
+  // Sync refs
+  useEffect(() => { isHostRef.current = isHost; }, [isHost]);
+  useEffect(() => { myPlayerIdRef.current = myPlayerId; }, [myPlayerId]);
+
+  // Detect URL ?room=CODE on first load
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const r = params.get("room");
+      if (r && /^[A-Z0-9]+$/.test(r) && r.length <= 8) {
+        setJoinCode(r.toUpperCase());
+      }
+    } catch (e) {}
+  }, []);
+
+  // Wake lock acquire / release based on screen
+  useEffect(() => {
+    const inGame = ["reveal", "game", "suddendeath", "elimreveal"].includes(screen);
+    const acquire = async () => {
+      try {
+        if ("wakeLock" in navigator && !wakeLockRef.current) {
+          wakeLockRef.current = await navigator.wakeLock.request("screen");
+        }
+      } catch (e) {}
+    };
+    const release = () => {
+      try { wakeLockRef.current && wakeLockRef.current.release && wakeLockRef.current.release(); } catch (e) {}
+      wakeLockRef.current = null;
+    };
+    if (inGame) acquire(); else release();
+    return release;
+  }, [screen]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      try { peerRef.current && peerRef.current.destroy && peerRef.current.destroy(); } catch (e) {}
+      peerRef.current = null;
+    };
+  }, []);
+
+  // Send a single message to a specific connection (host -> one client)
+  const sendToConn = (conn, msg) => {
+    try { if (conn && conn.open) conn.send(msg); } catch (e) { console.error("send fail", e); }
+  };
+
+  // Host: send to all connected clients
+  const broadcast = (msg) => {
+    connsRef.current.forEach((c) => sendToConn(c, msg));
+  };
+
+  // Client: send to host
+  const sendToHost = (msg) => {
+    sendToConn(hostConnRef.current, msg);
+  };
+
+  // Build a state snapshot for clients
+  const buildSnapshot = (overrides = {}) => ({
+    type: "state",
+    payload: {
+      screen, gamePhase, round,
+      speakingOrder, speakingIndex, allSpoken,
+      voteOrder,
+      eliminated,
+      tiedPlayers, suddenDeathCount, tieMessage, randomElimMessage,
+      sdSpeakingOrder, sdSpeakingIndex, sdAllSpoken,
+      sdVoteOrder,
+      elimRevealIdx, elimAnimPhase, elimWinType,
+      winner, scores,
+      timerEnabled, timerSeconds,
+      voteCounts: { done: Object.keys(votes).length, total: voteOrder.length },
+      sdVoteCounts: { done: Object.keys(suddenDeathVotes).length, total: sdVoteOrder.length },
+      voteCountdown,
+      players: sanitizePlayersForBroadcast(players, !!winner),
+      hostPlayerId,
+      ...overrides,
+    },
+  });
+
+  // Hold a stable broadcast snapshot fn ref
+  useEffect(() => { broadcastRef.current = () => broadcast(buildSnapshot()); });
+
+  // HOST: create room
+  const createRoom = (cb) => {
+    setNetworkError("");
+    if (typeof Peer === "undefined") {
+      setNetworkError("PeerJS non chargé. Vérifiez votre connexion.");
+      return;
+    }
+    const code = generateRoomCode();
+    const myId = generatePlayerId();
+    setMyPlayerId(myId);
+    setHostPlayerId(myId);
+    setRoomCode(code);
+    setIsHost(true);
+    setPlayMode("multi");
+    isHostRef.current = true;
+    myPlayerIdRef.current = myId;
+
+    const peer = new Peer(ROOM_PREFIX + code);
+    peerRef.current = peer;
+
+    peer.on("open", () => { if (cb) cb(); });
+    peer.on("error", (err) => {
+      console.error("Peer error", err);
+      if (err.type === "unavailable-id") {
+        setNetworkError("Code de room déjà pris. Réessaye.");
+      } else if (err.type === "network" || err.type === "server-error") {
+        setNetworkError("Erreur réseau. Vérifie ta connexion.");
+      } else {
+        setNetworkError("Erreur PeerJS: " + err.type);
+      }
+    });
+    peer.on("connection", (conn) => {
+      conn.on("open", () => {
+        // Attach handlers
+        conn.on("data", (msg) => onHostReceive(conn, msg));
+        conn.on("close", () => onHostClientDisconnect(conn));
+        conn.on("error", () => onHostClientDisconnect(conn));
+      });
+    });
+  };
+
+  // CLIENT: join a room
+  const joinRoom = (code, pseudo, emoji, photo, cb) => {
+    setNetworkError("");
+    if (typeof Peer === "undefined") {
+      setNetworkError("PeerJS non chargé. Vérifiez votre connexion.");
+      return;
+    }
+    code = (code || "").toUpperCase().trim();
+    if (!/^[A-Z2-9]{6}$/.test(code)) {
+      setNetworkError("Code invalide (6 caractères).");
+      return;
+    }
+    // Reuse stored player id for this room if any
+    let storedId = "";
+    try {
+      const k = "wundercover_pid_" + code;
+      storedId = localStorage.getItem(k) || "";
+    } catch (e) {}
+    const myId = storedId || generatePlayerId();
+    try { localStorage.setItem("wundercover_pid_" + code, myId); } catch (e) {}
+    setMyPlayerId(myId);
+    setRoomCode(code);
+    setIsHost(false);
+    setPlayMode("multi");
+    setMyPseudo(pseudo);
+    setMyEmoji(emoji);
+    setMyPhoto(photo);
+    isHostRef.current = false;
+    myPlayerIdRef.current = myId;
+
+    const peer = new Peer(myId);
+    peerRef.current = peer;
+
+    peer.on("open", () => {
+      const conn = peer.connect(ROOM_PREFIX + code, { reliable: true });
+      hostConnRef.current = conn;
+      conn.on("open", () => {
+        conn.send({ type: "join", playerId: myId, pseudo, emoji, photo });
+        if (cb) cb();
+      });
+      conn.on("data", (msg) => onClientReceive(msg));
+      conn.on("close", () => onHostDisconnect());
+      conn.on("error", () => onHostDisconnect());
+    });
+    peer.on("error", (err) => {
+      console.error("Peer error", err);
+      if (err.type === "peer-unavailable") {
+        setNetworkError("Room introuvable. Vérifie le code.");
+      } else if (err.type === "network") {
+        setNetworkError("Erreur réseau.");
+      } else {
+        setNetworkError("Erreur: " + err.type);
+      }
+    });
+  };
+
+  // Leave room cleanly
+  const leaveRoom = () => {
+    try {
+      if (isHostRef.current) {
+        broadcast({ type: "host_left" });
+      } else {
+        sendToHost({ type: "leave", playerId: myPlayerIdRef.current });
+      }
+    } catch (e) {}
+    try { peerRef.current && peerRef.current.destroy(); } catch (e) {}
+    peerRef.current = null;
+    connsRef.current = new Map();
+    hostConnRef.current = null;
+    setIsHost(false);
+    setPlayMode("solo");
+    setRoomCode("");
+    setLobbyPlayers([]);
+    setMySlotIdx(-1);
+    setMyWord(null);
+    setMyRole(null);
+    setNetworkError("");
+    isHostRef.current = false;
+  };
+
+  // ─── HOST RECEIVE ───
+  const onHostReceive = (conn, msg) => {
+    if (!msg || typeof msg !== "object") return;
+    switch (msg.type) {
+      case "join": {
+        // Add or reattach player
+        setLobbyPlayers((prev) => {
+          const idx = prev.findIndex((p) => p.playerId === msg.playerId);
+          let next;
+          if (idx >= 0) {
+            next = [...prev];
+            next[idx] = { ...next[idx], name: msg.pseudo, emoji: msg.emoji, photo: msg.photo, connected: true };
+          } else {
+            // Capacity check (host counts as 1)
+            const totalConnected = prev.filter((p) => p.connected !== false).length + 1;
+            if (totalConnected >= slotsCount) {
+              sendToConn(conn, { type: "error", message: "Room pleine." });
+              try { conn.close(); } catch (e) {}
+              return prev;
+            }
+            next = [...prev, { playerId: msg.playerId, name: msg.pseudo, emoji: msg.emoji, photo: msg.photo, connected: true }];
+          }
+          return next;
+        });
+        // Track connection
+        connsRef.current.set(msg.playerId, conn);
+
+        // Welcome the joiner
+        sendToConn(conn, { type: "welcome", playerId: msg.playerId, hostPlayerId: myPlayerIdRef.current });
+
+        // If we are mid-game and this player has a slot, restore their private data
+        const slot = players.findIndex((p) => p.playerId === msg.playerId);
+        if (slot >= 0 && players[slot]) {
+          sendToConn(conn, { type: "your_role", word: players[slot].word, role: players[slot].role, slotIdx: slot });
+          // Mark as connected
+          setPlayers((prev) => prev.map((p, i) => i === slot ? { ...p, connected: true } : p));
+        }
+        // Send current full state snapshot to the new client
+        setTimeout(() => sendToConn(conn, buildSnapshot()), 60);
+        break;
+      }
+      case "leave": {
+        // Treat like disconnect
+        onHostClientDisconnect(conn);
+        break;
+      }
+      case "next_speaker": {
+        // Only the current speaker may advance (or host)
+        const curIdx = speakingOrder[speakingIndex];
+        if (msg.playerId === players[curIdx]?.playerId || msg.playerId === myPlayerIdRef.current) {
+          if (speakingIndex < speakingOrder.length - 1) setSpeakingIndex(speakingIndex + 1);
+          else setAllSpoken(true);
+        }
+        break;
+      }
+      case "next_sd_speaker": {
+        const curIdx = sdSpeakingOrder[sdSpeakingIndex];
+        if (msg.playerId === players[curIdx]?.playerId || msg.playerId === myPlayerIdRef.current) {
+          if (sdSpeakingIndex < sdSpeakingOrder.length - 1) setSdSpeakingIndex(sdSpeakingIndex + 1);
+          else {
+            const aliveIdx = players.map((p, i) => (p.alive ? i : -1)).filter((i) => i >= 0);
+            setSdVoteOrder(shuffle(aliveIdx));
+            setSdAllSpoken(true);
+          }
+        }
+        break;
+      }
+      case "cast_vote": {
+        // msg.playerId, msg.targetIdx
+        const voterIdx = players.findIndex((p) => p.playerId === msg.playerId);
+        if (voterIdx < 0 || !players[voterIdx].alive) break;
+        if (votes[voterIdx] !== undefined) break; // already voted
+        setVotes((p) => ({ ...p, [voterIdx]: msg.targetIdx }));
+        break;
+      }
+      case "cast_sd_vote": {
+        const voterIdx = players.findIndex((p) => p.playerId === msg.playerId);
+        if (voterIdx < 0 || !players[voterIdx].alive) break;
+        if (suddenDeathVotes[voterIdx] !== undefined) break;
+        setSuddenDeathVotes((p) => ({ ...p, [voterIdx]: msg.targetIdx }));
+        break;
+      }
+      default: break;
+    }
+  };
+
+  // ─── HOST: client disconnected ───
+  const onHostClientDisconnect = (conn) => {
+    // Find the player linked to this connection
+    let disconnectedId = null;
+    connsRef.current.forEach((c, pid) => { if (c === conn) disconnectedId = pid; });
+    if (!disconnectedId) return;
+    connsRef.current.delete(disconnectedId);
+    setLobbyPlayers((prev) => {
+      // If game not started, remove from lobby. If started, mark as disconnected.
+      if (players.length > 0) {
+        return prev.map((p) => p.playerId === disconnectedId ? { ...p, connected: false } : p);
+      }
+      return prev.filter((p) => p.playerId !== disconnectedId);
+    });
+    setPlayers((prev) => prev.map((p) => p.playerId === disconnectedId ? { ...p, connected: false } : p));
+  };
+
+  // ─── CLIENT: receive from host ───
+  const onClientReceive = (msg) => {
+    if (!msg || typeof msg !== "object") return;
+    switch (msg.type) {
+      case "welcome": {
+        setHostPlayerId(msg.hostPlayerId);
+        break;
+      }
+      case "lobby": {
+        setLobbyPlayers(msg.players || []);
+        setSlotsCount(msg.slotsCount || 5);
+        break;
+      }
+      case "your_role": {
+        setMyWord(msg.word);
+        setMyRole(msg.role);
+        setMySlotIdx(msg.slotIdx);
+        break;
+      }
+      case "state": {
+        const s = msg.payload;
+        // Apply remote state to client's local state
+        setScreen(s.screen);
+        setGamePhase(s.gamePhase);
+        setRound(s.round);
+        setSpeakingOrder(s.speakingOrder);
+        setSpeakingIndex(s.speakingIndex);
+        setAllSpoken(s.allSpoken);
+        setVoteOrder(s.voteOrder);
+        setEliminated(s.eliminated);
+        setTiedPlayers(s.tiedPlayers);
+        setSuddenDeathCount(s.suddenDeathCount);
+        setTieMessage(s.tieMessage);
+        setRandomElimMessage(s.randomElimMessage);
+        setSdSpeakingOrder(s.sdSpeakingOrder);
+        setSdSpeakingIndex(s.sdSpeakingIndex);
+        setSdAllSpoken(s.sdAllSpoken);
+        setSdVoteOrder(s.sdVoteOrder);
+        setElimRevealIdx(s.elimRevealIdx);
+        setElimAnimPhase(s.elimAnimPhase);
+        setElimWinType(s.elimWinType);
+        setWinner(s.winner);
+        setScores(s.scores);
+        setTimerEnabled(s.timerEnabled);
+        setTimerSeconds(s.timerSeconds);
+        setVoteCounts(s.voteCounts || { done: 0, total: 0 });
+        setSdVoteCounts(s.sdVoteCounts || { done: 0, total: 0 });
+        setVoteCountdown(s.voteCountdown || 0);
+        // For lobby compatibility: also update lobbyPlayers to match
+        setLobbyPlayers((s.players || []).map((p) => ({
+          playerId: p.playerId, name: p.name, emoji: p.emoji, photo: p.photo, connected: p.connected !== false,
+        })));
+        // Update our own players array (with sanitized info)
+        setPlayers(s.players.map((p) => ({
+          playerId: p.playerId, name: p.name, emoji: p.emoji, photo: p.photo,
+          alive: p.alive, role: p.role, word: p.word, connected: p.connected,
+        })));
+        // Find own slot
+        const idx = (s.players || []).findIndex((p) => p.playerId === myPlayerIdRef.current);
+        if (idx >= 0) setMySlotIdx(idx);
+        // Reset vote state when entering a fresh vote phase
+        if (s.gamePhase === "describe") { setIVoted(false); setISdVoted(false); }
+        break;
+      }
+      case "host_left": {
+        setNetworkError("L'hôte a quitté la partie.");
+        leaveRoom();
+        transition(() => setScreen("home"));
+        break;
+      }
+      case "kicked": {
+        setNetworkError("Tu as été retiré de la partie.");
+        leaveRoom();
+        transition(() => setScreen("home"));
+        break;
+      }
+      case "error": {
+        setNetworkError(msg.message || "Erreur.");
+        break;
+      }
+      default: break;
+    }
+  };
+
+  const onHostDisconnect = () => {
+    setNetworkError("Connexion à l'hôte perdue.");
+    // Don't auto-leave, allow user to retry
+  };
+
+  // ─── HOST: lobby broadcast ───
+  // Whenever lobby players change while in lobby, broadcast to all
+  useEffect(() => {
+    if (!isHost || !peerRef.current) return;
+    if (screen !== "multi_lobby") return;
+    // Build full lobby including host
+    const fullLobby = [
+      { playerId: myPlayerId, name: myPseudo, emoji: myEmoji, photo: myPhoto, connected: true },
+      ...lobbyPlayers,
+    ];
+    broadcast({ type: "lobby", players: fullLobby, slotsCount });
+  }, [lobbyPlayers, slotsCount, screen, isHost, myPseudo, myEmoji, myPhoto]);
+
+  // ─── HOST: broadcast state on game state changes ───
+  useEffect(() => {
+    if (!isHost || !peerRef.current) return;
+    if (!["reveal", "game", "suddendeath", "elimreveal", "results"].includes(screen)) return;
+    broadcast(buildSnapshot());
+  }, [
+    screen, gamePhase, round,
+    speakingIndex, allSpoken,
+    eliminated.length,
+    JSON.stringify(players.map((p) => [p.alive, p.connected !== false ? 1 : 0])),
+    tiedPlayers.length, suddenDeathCount, tieMessage, randomElimMessage,
+    sdSpeakingIndex, sdAllSpoken,
+    elimRevealIdx, elimAnimPhase, elimWinType,
+    winner,
+    Object.keys(votes).length,
+    voteOrder.length,
+    Object.keys(suddenDeathVotes).length,
+    sdVoteOrder.length,
+    voteCountdown,
+    isHost,
+  ]);
+
+  // ─── HOST: auto-resolve when all votes are in ───
+  useEffect(() => {
+    if (!isHost || playMode !== "multi") return;
+    if (screen !== "game" || gamePhase !== "vote") return;
+    if (voteOrder.length === 0) return;
+    if (Object.keys(votes).length < voteOrder.length) return;
+    if (voteCountdown > 0) return;
+    setVoteCountdown(3);
+  }, [votes, voteOrder, gamePhase, screen, isHost, playMode]);
+
+  useEffect(() => {
+    if (!isHost || playMode !== "multi") return;
+    if (voteCountdown <= 0) return;
+    const t = setTimeout(() => {
+      if (voteCountdown === 1) {
+        setVoteCountdown(0);
+        if (screen === "suddendeath") resolveSd();
+        else if (gamePhase === "vote") resolveVote();
+      } else {
+        setVoteCountdown((c) => c - 1);
+      }
+    }, 1000);
+    return () => clearTimeout(t);
+  }, [voteCountdown, isHost, playMode, gamePhase, screen]);
+
+  useEffect(() => {
+    if (!isHost || playMode !== "multi") return;
+    if (screen !== "suddendeath" || !sdAllSpoken) return;
+    if (sdVoteOrder.length === 0) return;
+    if (Object.keys(suddenDeathVotes).length < sdVoteOrder.length) return;
+    if (voteCountdown > 0) return;
+    setVoteCountdown(3);
+  }, [suddenDeathVotes, sdVoteOrder, sdAllSpoken, screen, isHost, playMode]);
+
+  // ─────────────────────────────────────────────────────
+
   // ═══════════ HOME ═══════════
   if (screen === "home") return (
     <div style={cs}><style>{cssVars}</style>
@@ -903,10 +1481,20 @@ const UndercoverApp = function UndercoverApp() {
         <h1 style={{ fontFamily: "var(--font-display)", fontSize: "clamp(36px,8vw,56px)", fontWeight: 900, letterSpacing: -1, lineHeight: 1.1, background: "linear-gradient(135deg, var(--accent), var(--accent2))", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>UNDERCOVER</h1>
         <p style={{ color: "var(--text2)", fontSize: 15, marginTop: 8, maxWidth: 300, margin: "8px auto 0" }}>Bluffez, déduisez, éliminez. Qui est l'imposteur ?</p>
       </div>
-      <div style={{ marginTop: 48, display: "flex", flexDirection: "column", gap: 14, width: "100%", maxWidth: 340 }}>
-        <button onClick={() => transition(() => setScreen("setup"))} style={btnPrimaryConst}>Nouvelle partie</button>
+      <div style={{ marginTop: 40, display: "flex", flexDirection: "column", gap: 12, width: "100%", maxWidth: 340 }}>
+        <button onClick={() => { setPlayMode("solo"); transition(() => setScreen("setup")); }} style={btnPrimaryConst}>
+          📱 Solo <span style={{ fontWeight: 400, fontSize: 13, opacity: .8 }}>— 1 téléphone</span>
+        </button>
+        <button onClick={() => transition(() => setScreen("multi_choose"))} style={{ ...btnPrimaryConst, background: "linear-gradient(135deg, #2EC4B6, #7B2FF7)" }}>
+          🌐 Multi <span style={{ fontWeight: 400, fontSize: 13, opacity: .8 }}>— chacun son tel</span>
+        </button>
+        {joinCode && (
+          <div style={{ background: "#7B2FF722", border: "1px solid #7B2FF755", borderRadius: 12, padding: "10px 14px", fontSize: 12, color: "var(--text2)", textAlign: "center" }}>
+            Code détecté dans l'URL : <strong style={{ color: "#A855F7", fontFamily: "var(--font-mono)" }}>{joinCode}</strong>
+          </div>
+        )}
         {Object.keys(scores).length > 0 && (
-          <div style={{ background: "var(--surface)", borderRadius: 16, padding: 20, border: "1px solid var(--border)" }}>
+          <div style={{ background: "var(--surface)", borderRadius: 16, padding: 20, border: "1px solid var(--border)", marginTop: 16 }}>
             <h3 style={{ fontSize: 14, color: "var(--text2)", marginBottom: 12, fontWeight: 600 }}>🏆 Scores</h3>
             {Object.entries(scores).sort(([,a],[,b]) => b - a).map(([n, s]) => (
               <div key={n} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid var(--border)" }}>
@@ -920,6 +1508,326 @@ const UndercoverApp = function UndercoverApp() {
       <p style={{ position: "fixed", bottom: 16, fontSize: 11, color: "var(--text3)" }}>Manche {round}</p>
     </div>
   );
+
+  // ═══════════ MULTI: Choose Create or Join ═══════════
+  if (screen === "multi_choose") return (
+    <div style={cs}><style>{cssVars}</style>
+      <button onClick={() => transition(() => setScreen("home"))} style={btnBack}>← Retour</button>
+      <div style={{ textAlign: "center", marginBottom: 32, marginTop: 20 }}>
+        <div style={{ fontSize: 56, marginBottom: 8 }}>🌐</div>
+        <h2 style={sectionTitle}>Mode Multi</h2>
+        <p style={{ color: "var(--text2)", fontSize: 13, maxWidth: 320, margin: "8px auto 0" }}>Chaque joueur sur son téléphone, partie synchronisée en P2P.</p>
+      </div>
+      {networkError && (
+        <div style={{ background: "#E6394622", border: "1px solid #E6394666", borderRadius: 12, padding: "10px 14px", fontSize: 13, color: "#E63946", marginBottom: 16, maxWidth: 340, width: "100%", textAlign: "center" }}>
+          {networkError}
+        </div>
+      )}
+      <div style={{ display: "flex", flexDirection: "column", gap: 12, width: "100%", maxWidth: 340 }}>
+        <button onClick={() => transition(() => setScreen("multi_host_setup"))} style={btnPrimaryConst}>
+          🎯 Créer une partie
+        </button>
+        <button onClick={() => transition(() => setScreen("multi_join_setup"))} style={{ ...btnPrimaryConst, background: "linear-gradient(135deg, #2EC4B6, #1E90FF)" }}>
+          🔗 Rejoindre une partie
+        </button>
+      </div>
+      <div style={{ marginTop: 40, padding: "12px 16px", background: "var(--surface2)", borderRadius: 12, fontSize: 11, color: "var(--text3)", maxWidth: 340, lineHeight: 1.5, textAlign: "center" }}>
+        ℹ️ L'hôte garde l'app ouverte pendant toute la partie. Si l'hôte se déconnecte, la partie se termine.
+      </div>
+    </div>
+  );
+
+  // ═══════════ MULTI: Host setup ═══════════
+  if (screen === "multi_host_setup") {
+    const canCreate = myPseudo.trim().length >= 1 && slotsCount >= 3 && slotsCount <= 12;
+    return (
+      <div style={cs}><style>{cssVars}</style>
+        {cameraOpenFor === "self" && (
+          <CameraModal
+            onCapture={(url) => { setMyPhoto(url); setCameraOpenFor(null); }}
+            onClose={() => setCameraOpenFor(null)}
+          />
+        )}
+        <button onClick={() => transition(() => setScreen("multi_choose"))} style={btnBack}>← Retour</button>
+        <div style={{ textAlign: "center", marginBottom: 16 }}>
+          <div style={{ fontSize: 48, marginBottom: 4 }}>🎯</div>
+          <h2 style={sectionTitle}>Créer une partie</h2>
+        </div>
+        {networkError && (
+          <div style={{ background: "#E6394622", border: "1px solid #E6394666", borderRadius: 12, padding: "10px 14px", fontSize: 13, color: "#E63946", marginBottom: 12, maxWidth: 360, width: "100%", textAlign: "center" }}>
+            {networkError}
+          </div>
+        )}
+        <div style={{ width: "100%", maxWidth: 360, display: "flex", flexDirection: "column", gap: 12 }}>
+          <div style={card}>
+            <label style={labelStyle}>Ton identité</label>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10 }}>
+              <EmojiPicker value={myEmoji} photo={myPhoto} onSelect={setMyEmoji} onPhoto={() => setCameraOpenFor("self")} />
+              <input value={myPseudo} onChange={(e) => setMyPseudo(e.target.value.slice(0, 20))} placeholder="Ton pseudo" style={{ ...inputStyle, flex: 1 }} />
+            </div>
+          </div>
+          <div style={card}>
+            <label style={labelStyle}>Nombre de joueurs</label>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 16, marginTop: 12 }}>
+              <button onClick={() => setSlotsCount(Math.max(3, slotsCount - 1))} style={btnSmall}>−</button>
+              <div style={{ fontSize: 36, fontWeight: 900, fontFamily: "var(--font-display)", color: "var(--accent)", minWidth: 60, textAlign: "center" }}>{slotsCount}</div>
+              <button onClick={() => setSlotsCount(Math.min(12, slotsCount + 1))} style={btnSmall}>+</button>
+            </div>
+            <p style={{ fontSize: 11, color: "var(--text3)", textAlign: "center", marginTop: 8 }}>Toi inclus</p>
+          </div>
+          <button onClick={() => {
+            if (!canCreate) return;
+            createRoom(() => transition(() => setScreen("multi_lobby")));
+          }} disabled={!canCreate} style={{ ...btnPrimaryConst, opacity: canCreate ? 1 : .4, marginTop: 8 }}>
+            Créer la room →
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ═══════════ MULTI: Join setup ═══════════
+  if (screen === "multi_join_setup") {
+    const canJoin = myPseudo.trim().length >= 1 && /^[A-Z2-9]{6}$/.test(joinCode.toUpperCase());
+    return (
+      <div style={cs}><style>{cssVars}</style>
+        {cameraOpenFor === "self" && (
+          <CameraModal
+            onCapture={(url) => { setMyPhoto(url); setCameraOpenFor(null); }}
+            onClose={() => setCameraOpenFor(null)}
+          />
+        )}
+        <button onClick={() => transition(() => setScreen("multi_choose"))} style={btnBack}>← Retour</button>
+        <div style={{ textAlign: "center", marginBottom: 16 }}>
+          <div style={{ fontSize: 48, marginBottom: 4 }}>🔗</div>
+          <h2 style={sectionTitle}>Rejoindre une partie</h2>
+        </div>
+        {networkError && (
+          <div style={{ background: "#E6394622", border: "1px solid #E6394666", borderRadius: 12, padding: "10px 14px", fontSize: 13, color: "#E63946", marginBottom: 12, maxWidth: 360, width: "100%", textAlign: "center" }}>
+            {networkError}
+          </div>
+        )}
+        <div style={{ width: "100%", maxWidth: 360, display: "flex", flexDirection: "column", gap: 12 }}>
+          <div style={card}>
+            <label style={labelStyle}>Code de la room</label>
+            <input
+              value={joinCode}
+              onChange={(e) => setJoinCode(e.target.value.toUpperCase().replace(/[^A-Z2-9]/g, "").slice(0, 6))}
+              placeholder="ABC234"
+              maxLength={6}
+              autoCapitalize="characters"
+              autoCorrect="off"
+              spellCheck={false}
+              style={{ ...inputStyle, textAlign: "center", fontFamily: "var(--font-mono)", fontSize: 24, letterSpacing: 6, fontWeight: 700, marginTop: 8 }}
+            />
+          </div>
+          <div style={card}>
+            <label style={labelStyle}>Ton identité</label>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10 }}>
+              <EmojiPicker value={myEmoji} photo={myPhoto} onSelect={setMyEmoji} onPhoto={() => setCameraOpenFor("self")} />
+              <input value={myPseudo} onChange={(e) => setMyPseudo(e.target.value.slice(0, 20))} placeholder="Ton pseudo" style={{ ...inputStyle, flex: 1 }} />
+            </div>
+          </div>
+          <button onClick={() => {
+            if (!canJoin) return;
+            joinRoom(joinCode.toUpperCase(), myPseudo.trim(), myEmoji, myPhoto, () => transition(() => setScreen("multi_lobby")));
+          }} disabled={!canJoin} style={{ ...btnPrimaryConst, opacity: canJoin ? 1 : .4, marginTop: 8, background: "linear-gradient(135deg, #2EC4B6, #1E90FF)" }}>
+            Rejoindre →
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ═══════════ MULTI: Lobby ═══════════
+  if (screen === "multi_lobby") {
+    // Compute "everyone" list — for host: self + connected lobbyPlayers
+    const allInLobby = isHost
+      ? [{ playerId: myPlayerId, name: myPseudo, emoji: myEmoji, photo: myPhoto, connected: true }, ...lobbyPlayers.filter(p => p.connected !== false)]
+      : (lobbyPlayers || []);
+    const filledCount = allInLobby.length;
+    const slotsTotal = isHost ? slotsCount : (lobbyPlayers.length > 0 ? slotsCount : slotsCount);
+    const everyoneHere = filledCount >= slotsTotal;
+    const shareUrl = (() => {
+      try {
+        const u = new URL(window.location.href);
+        u.searchParams.set("room", roomCode);
+        u.hash = "";
+        return u.toString();
+      } catch (e) { return roomCode; }
+    })();
+    return (
+      <div style={cs}><style>{cssVars}</style>
+        <button onClick={() => { leaveRoom(); transition(() => setScreen("home")); }} style={btnBack}>← Quitter</button>
+        <div style={{ textAlign: "center", marginBottom: 12 }}>
+          <div style={{ fontSize: 36, marginBottom: 4 }}>{isHost ? "🎯" : "🔗"}</div>
+          <h2 style={sectionTitle}>{isHost ? "Lobby (Hôte)" : "Lobby"}</h2>
+        </div>
+        {networkError && (
+          <div style={{ background: "#E6394622", border: "1px solid #E6394666", borderRadius: 12, padding: "10px 14px", fontSize: 13, color: "#E63946", marginBottom: 12, maxWidth: 380, width: "100%", textAlign: "center" }}>
+            {networkError}
+          </div>
+        )}
+        <div style={{ width: "100%", maxWidth: 380, display: "flex", flexDirection: "column", gap: 12 }}>
+          {/* Room code + QR (host only) */}
+          {isHost && (
+            <div style={{ ...card, textAlign: "center" }}>
+              <p style={{ fontSize: 11, color: "var(--text3)", textTransform: "uppercase", letterSpacing: 2, marginBottom: 6 }}>Code de la room</p>
+              <div style={{ fontFamily: "var(--font-mono)", fontSize: 36, fontWeight: 900, letterSpacing: 6, color: "var(--accent)", marginBottom: 10 }}>{roomCode}</div>
+              <div style={{ marginBottom: 8 }}>
+                <QRCanvas value={shareUrl} size={140} />
+              </div>
+              <p style={{ fontSize: 11, color: "var(--text3)", lineHeight: 1.4 }}>Partage le code ou scanne le QR pour rejoindre.</p>
+            </div>
+          )}
+          {/* Slots list */}
+          <div style={card}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+              <label style={labelStyle}>Joueurs</label>
+              <span style={{ fontSize: 12, fontFamily: "var(--font-mono)", color: everyoneHere ? "var(--accent)" : "var(--text3)" }}>{filledCount} / {slotsTotal}</span>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {Array.from({ length: slotsTotal }).map((_, i) => {
+                const p = allInLobby[i];
+                const filled = !!p;
+                const isMe = filled && p.playerId === myPlayerId;
+                const isHostSlot = filled && p.playerId === hostPlayerId;
+                return (
+                  <div key={i} style={{
+                    display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", borderRadius: 12,
+                    background: filled ? (isMe ? "var(--accent)15" : "var(--surface2)") : "var(--surface2)",
+                    border: filled ? (isMe ? "1px solid var(--accent)" : "1px solid var(--border)") : "1px dashed var(--border)",
+                    opacity: filled ? 1 : .5,
+                  }}>
+                    {filled ? (
+                      <Avatar emoji={p.emoji} photo={p.photo} size={32} style={{ border: "none" }} />
+                    ) : (
+                      <div style={{ width: 32, height: 32, borderRadius: "50%", background: "var(--surface)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text3)" }}>?</div>
+                    )}
+                    <span style={{ fontSize: 14, fontWeight: 600, color: filled ? "var(--text)" : "var(--text3)", flex: 1 }}>
+                      {filled ? p.name : <em style={{ color: "var(--text3)" }}>En attente…</em>}
+                    </span>
+                    {isHostSlot && <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 6, background: "#FFD16622", color: "#FFD166", fontWeight: 700 }}>HÔTE</span>}
+                    {isMe && !isHostSlot && <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 6, background: "var(--accent)22", color: "var(--accent)", fontWeight: 700 }}>TOI</span>}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Game config — host only */}
+          {isHost && (
+            <>
+              <div style={card}>
+                <label style={labelStyle}>Mode</label>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8 }}>
+                  {MODES.map((m) => (
+                    <button key={m.id} onClick={() => setMode(m.id)} style={{ ...chipStyleSmall, padding: "10px 12px", flexDirection: "row", justifyContent: "flex-start", gap: 10, background: mode === m.id ? "var(--accent)22" : "var(--surface2)", border: mode === m.id ? "2px solid var(--accent)" : "2px solid transparent", color: mode === m.id ? "var(--accent)" : "var(--text2)" }}>
+                      <span style={{ fontSize: 18 }}>{m.icon}</span>
+                      <span style={{ fontSize: 13, fontWeight: 700 }}>{m.label}</span>
+                      <span style={{ fontSize: 11, color: "var(--text3)", marginLeft: "auto" }}>{m.desc}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {mode === "perso" && (
+                <div style={card}>
+                  <label style={labelStyle}>Rôles personnalisés</label>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginTop: 8 }}>
+                    <div style={{ flex: 1, padding: 8, background: "var(--surface2)", borderRadius: 10 }}>
+                      <p style={{ fontSize: 11, color: "var(--text3)", marginBottom: 4 }}>Undercovers</p>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                        <button onClick={() => setCustomUC(Math.max(1, customUC - 1))} style={btnSmall}>−</button>
+                        <span style={{ fontFamily: "var(--font-mono)", fontSize: 18, fontWeight: 800, color: "#E63946" }}>{customUC}</span>
+                        <button onClick={() => setCustomUC(Math.min(slotsCount - 1 - customMW, customUC + 1))} style={btnSmall}>+</button>
+                      </div>
+                    </div>
+                    <div style={{ flex: 1, padding: 8, background: "var(--surface2)", borderRadius: 10 }}>
+                      <p style={{ fontSize: 11, color: "var(--text3)", marginBottom: 4 }}>Mr. White</p>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                        <button onClick={() => setCustomMW(Math.max(0, customMW - 1))} style={btnSmall}>−</button>
+                        <span style={{ fontFamily: "var(--font-mono)", fontSize: 18, fontWeight: 800, color: "#888" }}>{customMW}</span>
+                        <button onClick={() => setCustomMW(Math.min(slotsCount - 1 - customUC, customMW + 1))} style={btnSmall}>+</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+              <div style={card}>
+                <label style={labelStyle}>Thème</label>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 6, marginTop: 8 }}>
+                  {THEMES.map((t) => (
+                    <button key={t.id} onClick={() => setTheme(t.id)} style={{ ...chipStyleSmall, background: theme === t.id ? t.color + "22" : "var(--surface2)", border: theme === t.id ? `2px solid ${t.color}` : "2px solid transparent", color: theme === t.id ? t.color : "var(--text2)" }}>
+                      <span style={{ fontSize: 18 }}>{t.icon}</span><span style={{ fontSize: 10, fontWeight: 600 }}>{t.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {theme === "mix" && (
+                <div style={card}><label style={labelStyle}>Mixer</label>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
+                    {THEMES.filter((t) => t.id !== "mix").map((t) => (
+                      <button key={t.id} onClick={() => setMixThemes((p) => p.includes(t.id) ? p.filter((x) => x !== t.id) : [...p, t.id])} style={{ ...chipStyleSmall, background: mixThemes.includes(t.id) ? t.color + "22" : "var(--surface2)", border: mixThemes.includes(t.id) ? `2px solid ${t.color}` : "2px solid transparent", color: mixThemes.includes(t.id) ? t.color : "var(--text2)" }}>
+                        {t.icon} {t.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div style={card}><label style={labelStyle}>Difficulté</label>
+                <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+                  {DIFFICULTIES.map((d) => (
+                    <button key={d.id} onClick={() => setDifficulty(d.id)} style={{ flex: 1, padding: "8px 4px", borderRadius: 10, cursor: "pointer", background: difficulty === d.id ? d.color + "22" : "var(--surface2)", border: difficulty === d.id ? `2px solid ${d.color}` : "2px solid transparent", color: difficulty === d.id ? d.color : "var(--text2)", fontWeight: 700, fontSize: 12 }}>
+                      {d.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div style={card}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <label style={labelStyle}>Timer</label>
+                  <button onClick={() => setTimerEnabled(!timerEnabled)} style={{ width: 48, height: 26, borderRadius: 13, border: "none", cursor: "pointer", background: timerEnabled ? "var(--accent)" : "var(--surface2)", position: "relative" }}>
+                    <div style={{ width: 20, height: 20, borderRadius: "50%", background: "#fff", position: "absolute", top: 3, left: timerEnabled ? 25 : 3, transition: "left .3s" }} />
+                  </button>
+                </div>
+                {timerEnabled && (
+                  <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
+                    {[30,45,60,90].map((s) => (
+                      <button key={s} onClick={() => setTimerSeconds(s)} style={{ flex: 1, padding: "6px 4px", borderRadius: 10, fontSize: 12, fontFamily: "var(--font-mono)", fontWeight: 700, background: timerSeconds === s ? "var(--accent)" : "var(--surface2)", color: timerSeconds === s ? "#fff" : "var(--text2)", border: "none" }}>{s}s</button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <button onClick={() => {
+                if (!everyoneHere) return;
+                // Build players list from lobby
+                const sortedLobby = [
+                  { playerId: myPlayerId, name: myPseudo, emoji: myEmoji, photo: myPhoto },
+                  ...lobbyPlayers.filter(p => p.connected !== false),
+                ];
+                // Set up the canonical playerCount/names/emojis used by startGame
+                setPlayerCount(sortedLobby.length);
+                setPlayerNames(sortedLobby.map(p => p.name));
+                setPlayerEmojis(sortedLobby.map(p => p.emoji));
+                setPlayerPhotos(sortedLobby.map(p => p.photo));
+                // Defer startGame to next tick so state updates land
+                setTimeout(() => startGameMulti(sortedLobby), 50);
+              }} disabled={!everyoneHere} style={{ ...btnPrimaryConst, opacity: everyoneHere ? 1 : .4, marginTop: 8 }}>
+                {everyoneHere ? "🚀 Lancer la partie" : `Attente ${slotsTotal - filledCount} joueur${slotsTotal - filledCount > 1 ? "s" : ""}…`}
+              </button>
+            </>
+          )}
+          {!isHost && (
+            <div style={{ ...card, textAlign: "center", padding: "20px 16px" }}>
+              <div style={{ fontSize: 32, marginBottom: 8 }}>⏳</div>
+              <p style={{ fontSize: 14, color: "var(--text2)", fontWeight: 600 }}>En attente de l'hôte…</p>
+              <p style={{ fontSize: 12, color: "var(--text3)", marginTop: 4 }}>L'hôte lancera la partie quand tout le monde sera là.</p>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   // ═══════════ SETUP ═══════════
   if (screen === "setup") return (
@@ -992,7 +1900,7 @@ const UndercoverApp = function UndercoverApp() {
         <label style={labelStyle}>Thème</label>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 8, marginTop: 8 }}>
           {THEMES.map((t) => (
-            <button key={t.id} onClick={() => { setTheme(t.id); setUseCustom(t.id === "custom"); }} style={{ ...chipStyleSmall, background: theme === t.id ? t.color + "22" : "var(--surface2)", border: theme === t.id ? `2px solid ${t.color}` : "2px solid transparent", color: theme === t.id ? t.color : "var(--text2)" }}>
+            <button key={t.id} onClick={() => setTheme(t.id)} style={{ ...chipStyleSmall, background: theme === t.id ? t.color + "22" : "var(--surface2)", border: theme === t.id ? `2px solid ${t.color}` : "2px solid transparent", color: theme === t.id ? t.color : "var(--text2)" }}>
               <span style={{ fontSize: 20 }}>{t.icon}</span><span style={{ fontSize: 10, fontWeight: 600 }}>{t.label}</span>
             </button>
           ))}
@@ -1001,7 +1909,7 @@ const UndercoverApp = function UndercoverApp() {
       {theme === "mix" && (
         <div style={card}><label style={labelStyle}>Mixer</label>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 8 }}>
-            {THEMES.filter((t) => !["custom","mix"].includes(t.id)).map((t) => (
+            {THEMES.filter((t) => t.id !== "mix").map((t) => (
               <button key={t.id} onClick={() => setMixThemes((p) => p.includes(t.id) ? p.filter((x) => x !== t.id) : [...p, t.id])} style={{ ...chipStyleSmall, background: mixThemes.includes(t.id) ? t.color + "22" : "var(--surface2)", border: mixThemes.includes(t.id) ? `2px solid ${t.color}` : "2px solid transparent", color: mixThemes.includes(t.id) ? t.color : "var(--text2)" }}>
                 {t.icon} {t.label}
               </button>
@@ -1009,14 +1917,7 @@ const UndercoverApp = function UndercoverApp() {
           </div>
         </div>
       )}
-      {theme === "custom" && (
-        <div style={card}><label style={labelStyle}>Mots personnalisés</label>
-          <input value={customWords[0]} onChange={(e) => setCustomWords([e.target.value, customWords[1]])} placeholder="Mot des civils" style={inputStyle} />
-          <input value={customWords[1]} onChange={(e) => setCustomWords([customWords[0], e.target.value])} placeholder="Mot des undercovers" style={{ ...inputStyle, marginTop: 8 }} />
-        </div>
-      )}
-      {theme !== "custom" && (
-        <div style={card}><label style={labelStyle}>Difficulté</label>
+      <div style={card}><label style={labelStyle}>Difficulté</label>
           <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
             {DIFFICULTIES.map((d) => (
               <button key={d.id} onClick={() => setDifficulty(d.id)} style={{ flex: 1, padding: "10px 8px", borderRadius: 12, cursor: "pointer", background: difficulty === d.id ? d.color + "22" : "var(--surface2)", border: difficulty === d.id ? `2px solid ${d.color}` : "2px solid transparent", color: difficulty === d.id ? d.color : "var(--text2)", fontWeight: 700, fontSize: 13, textAlign: "center", transition: "all .2s" }}>
@@ -1025,7 +1926,6 @@ const UndercoverApp = function UndercoverApp() {
             ))}
           </div>
         </div>
-      )}
       <div style={card}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <label style={labelStyle}>Timer</label>
@@ -1139,6 +2039,67 @@ const UndercoverApp = function UndercoverApp() {
 
   // ═══════════ REVEAL ═══════════
   if (screen === "reveal") {
+    // ─── MULTI version ───
+    if (playMode === "multi") {
+      // mySlotIdx, myWord, myRole are set
+      const meIdx = mySlotIdx;
+      const me = players[meIdx];
+      const role = myRole;
+      const word = myWord;
+      const rc = role === "civil" ? "var(--accent)" : role === "undercover" ? "#E63946" : "#aaa";
+      const rl = role === "civil" ? "Civil" : role === "undercover" ? "Undercover" : "Mr. White";
+      // Until we have our role and a player record, show a brief loading
+      if (!me || !role) {
+        return (
+          <div style={{ ...cs, justifyContent: "center" }}><style>{cssVars}</style>
+            <div style={{ textAlign: "center" }}>
+              <div style={{ fontSize: 48, marginBottom: 12, animation: "pulse 1.5s infinite" }}>🎴</div>
+              <p style={{ color: "var(--text2)", fontSize: 14 }}>Distribution des rôles…</p>
+            </div>
+          </div>
+        );
+      }
+      return (
+        <div style={{ ...cs, justifyContent: "center", minHeight: "100vh" }}><style>{cssVars}</style>
+          <p style={{ fontSize: 13, color: "var(--text2)", marginBottom: 24, fontWeight: 600 }}>Ton rôle</p>
+          <div style={{ background: "var(--surface)", borderRadius: 24, padding: "40px 32px", border: "1px solid var(--border)", textAlign: "center", width: "100%", maxWidth: 340, boxShadow: "0 20px 60px rgba(0,0,0,.3)" }}>
+            <Avatar emoji={me.emoji} photo={me.photo} size={72} style={{ margin: "0 auto 12px", border: "3px solid var(--border)" }} />
+            <h2 style={{ fontSize: 22, fontWeight: 800, fontFamily: "var(--font-display)" }}>{me.name}</h2>
+            {wordVisible ? (
+              <div style={{ marginTop: 20, animation: "fadeUp .4s ease" }}>
+                <span style={{ display: "inline-block", padding: "4px 14px", borderRadius: 20, background: rc + "22", color: rc, fontSize: 12, fontWeight: 700, marginBottom: 12 }}>{rl}</span>
+                <p style={{ fontSize: 28, fontWeight: 900, fontFamily: "var(--font-display)", color: rc, marginTop: 8 }}>
+                  {role === "mrwhite" ? "Aucun mot 👀" : word}
+                </p>
+                <p style={{ fontSize: 12, color: "var(--text3)", marginTop: 16 }}>Mémorise bien ton mot.</p>
+              </div>
+            ) : (
+              <div style={{ marginTop: 20 }}>
+                <p style={{ color: "var(--text2)", fontSize: 14 }}>Appuie pour voir ton rôle</p>
+                <div style={{ width: 64, height: 64, margin: "16px auto", borderRadius: "50%", background: "var(--accent)11", border: "2px dashed var(--accent)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, animation: "pulse 2s infinite" }}>👁️</div>
+              </div>
+            )}
+          </div>
+          {!wordVisible ? (
+            <button onClick={() => setWordVisible(true)} style={{ ...btnPrimaryConst, marginTop: 32, width: "100%", maxWidth: 340 }}>
+              👁️ Révéler mon rôle
+            </button>
+          ) : (
+            isHost ? (
+              <button onClick={() => { startDescribePhase(players); transition(() => setScreen("game")); }} style={{ ...btnPrimaryConst, marginTop: 32, width: "100%", maxWidth: 340 }}>
+                🎮 Lancer la phase de description
+              </button>
+            ) : (
+              <div style={{ marginTop: 32, textAlign: "center", color: "var(--text3)", fontSize: 13 }}>
+                <div style={{ fontSize: 28, marginBottom: 8, animation: "pulse 1.5s infinite" }}>⏳</div>
+                En attente de l'hôte…
+              </div>
+            )
+          )}
+        </div>
+      );
+    }
+    // ─── SOLO version (original) ───
     const p = players[revealIndex];
     const rc = p.role === "civil" ? "var(--accent)" : p.role === "undercover" ? "#E63946" : "#aaa";
     const rl = p.role === "civil" ? "Civil" : p.role === "undercover" ? "Undercover" : "Mr. White";
@@ -1173,9 +2134,18 @@ const UndercoverApp = function UndercoverApp() {
   // ═══════════ GAME ═══════════
   if (screen === "game") {
     const alive = getAlive();
+    const me = mySlotIdx >= 0 ? players[mySlotIdx] : null;
+    const amSpectator = playMode === "multi" && me && !me.alive;
     return (
       <div style={cs}><style>{cssVars}</style>
         <div style={{ width: "100%", maxWidth: 400 }}>
+          {playMode === "multi" && (
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, fontSize: 11, color: "var(--text3)" }}>
+              <span style={{ fontFamily: "var(--font-mono)" }}>{isHost ? "🎯" : "🔗"} {roomCode}</span>
+              {amSpectator && <span style={{ background: "#88888822", color: "#888", padding: "3px 10px", borderRadius: 8, fontWeight: 700 }}>👻 SPECTATEUR</span>}
+              {me && me.alive && <span style={{ background: "var(--accent)22", color: "var(--accent)", padding: "3px 10px", borderRadius: 8, fontWeight: 700 }}>{me.name}</span>}
+            </div>
+          )}
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
             <h2 style={{ fontSize: 18, fontWeight: 800, fontFamily: "var(--font-display)" }}>
               {gamePhase === "describe" ? "💬 Description" : "🗳️ Vote"}
@@ -1200,13 +2170,19 @@ const UndercoverApp = function UndercoverApp() {
                   </div>
                   {speakingOrder.length > 0 && speakingIndex < speakingOrder.length && (() => {
                     const sp = players[speakingOrder[speakingIndex]];
+                    const isMyTurn = playMode === "multi" && sp && sp.playerId === myPlayerId;
+                    const amSpectator = playMode === "multi" && mySlotIdx >= 0 && players[mySlotIdx] && !players[mySlotIdx].alive;
                     return (
                       <div style={{ ...card, textAlign: "center", padding: "32px 24px", border: "1px solid var(--accent)44", boxShadow: "0 8px 32px rgba(108,92,231,.15)", animation: "fadeUp .4s ease" }}>
                         <p style={{ fontSize: 12, color: "var(--text3)", marginBottom: 8, fontFamily: "var(--font-mono)" }}>Tour {speakingIndex + 1} / {speakingOrder.length}</p>
                         <Avatar emoji={sp.emoji} photo={sp.photo} size={64} style={{ margin: "0 auto 12px", border: "3px solid var(--accent)" }} />
                         <p style={{ fontSize: 13, color: "var(--text2)", marginBottom: 4 }}>C'est au tour de</p>
-                        <h3 style={{ fontSize: 26, fontWeight: 900, fontFamily: "var(--font-display)", color: "var(--accent)" }}>{sp.name}</h3>
-                        <p style={{ fontSize: 13, color: "var(--text2)", marginTop: 12 }}>Décris ton mot sans le dire !</p>
+                        <h3 style={{ fontSize: 26, fontWeight: 900, fontFamily: "var(--font-display)", color: "var(--accent)" }}>{sp.name}{isMyTurn && " (toi)"}</h3>
+                        <p style={{ fontSize: 13, color: "var(--text2)", marginTop: 12 }}>
+                          {playMode === "multi"
+                            ? (isMyTurn ? "À toi de parler ! Décris ton mot." : amSpectator ? "Tu es en mode spectateur." : "Écoute la description.")
+                            : "Décris ton mot sans le dire !"}
+                        </p>
                         {timerEnabled && <div style={{ marginTop: 16, display: "flex", justifyContent: "center" }}><Timer key={speakingIndex} seconds={timerSeconds} onEnd={() => {}} /></div>}
                       </div>
                     );
@@ -1219,23 +2195,126 @@ const UndercoverApp = function UndercoverApp() {
                       </div>
                     ))}
                   </div>
-                  <button onClick={() => { if (speakingIndex < speakingOrder.length - 1) setSpeakingIndex(speakingIndex + 1); else setAllSpoken(true); }} style={{ ...btnPrimaryConst, marginTop: 20, width: "100%" }}>
-                    {speakingIndex < speakingOrder.length - 1 ? "Joueur suivant →" : "✅ Tout le monde a parlé"}
-                  </button>
+                  {(() => {
+                    const sp = players[speakingOrder[speakingIndex]];
+                    if (playMode === "multi") {
+                      const isMyTurn = sp && sp.playerId === myPlayerId;
+                      if (!isMyTurn) {
+                        return (
+                          <div style={{ marginTop: 20, padding: "14px", background: "var(--surface2)", borderRadius: 12, textAlign: "center", color: "var(--text3)", fontSize: 13 }}>
+                            ⏳ {sp?.name} doit cliquer sur son téléphone…
+                          </div>
+                        );
+                      }
+                      // It's my turn — I send to host (or advance directly if host)
+                      const advance = () => {
+                        if (isHost) {
+                          if (speakingIndex < speakingOrder.length - 1) setSpeakingIndex(speakingIndex + 1);
+                          else setAllSpoken(true);
+                        } else {
+                          sendToHost({ type: "next_speaker", playerId: myPlayerId });
+                        }
+                      };
+                      return (
+                        <button onClick={advance} style={{ ...btnPrimaryConst, marginTop: 20, width: "100%" }}>
+                          {speakingIndex < speakingOrder.length - 1 ? "✓ J'ai fini, joueur suivant →" : "✅ J'ai fini de parler"}
+                        </button>
+                      );
+                    }
+                    // Solo: original button
+                    return (
+                      <button onClick={() => { if (speakingIndex < speakingOrder.length - 1) setSpeakingIndex(speakingIndex + 1); else setAllSpoken(true); }} style={{ ...btnPrimaryConst, marginTop: 20, width: "100%" }}>
+                        {speakingIndex < speakingOrder.length - 1 ? "Joueur suivant →" : "✅ Tout le monde a parlé"}
+                      </button>
+                    );
+                  })()}
                 </>
               ) : (
                 <div style={{ ...card, textAlign: "center", padding: "28px 20px" }}>
                   <div style={{ fontSize: 40, marginBottom: 8 }}>💬</div>
                   <p style={{ fontSize: 15, fontWeight: 700, marginBottom: 6 }}>Tous les joueurs ont donné leur indice !</p>
                   <p style={{ fontSize: 13, color: "var(--text2)", marginBottom: 20 }}>Délibérez, puis passez au vote.</p>
-                  <button onClick={startVote} style={{ ...btnPrimaryConst, width: "100%" }}>🗳️ Passer au vote</button>
+                  {(playMode !== "multi" || isHost) ? (
+                    <button onClick={startVote} style={{ ...btnPrimaryConst, width: "100%" }}>🗳️ Passer au vote</button>
+                  ) : (
+                    <p style={{ fontSize: 12, color: "var(--text3)" }}>⏳ En attente de l'hôte…</p>
+                  )}
                 </div>
               )}
             </>
           )}
 
-          {/* ── VOTE PHASE (Anonymous) ── */}
-          {gamePhase === "vote" && quickVote && (
+          {/* ── VOTE PHASE — MULTI ── */}
+          {gamePhase === "vote" && playMode === "multi" && (() => {
+            const me = mySlotIdx >= 0 ? players[mySlotIdx] : null;
+            const amAlive = !!(me && me.alive);
+            const targets = alive.filter((t) => t.idx !== mySlotIdx);
+            const totalAlive = alive.length;
+            const votesDone = isHost ? Object.keys(votes).length : voteCounts.done;
+            const votesTotal = isHost ? voteOrder.length : voteCounts.total;
+            const showCountdown = voteCountdown > 0;
+            return (
+              <div>
+                <div style={{ display: "flex", justifyContent: "center", gap: 4, marginBottom: 14 }}>
+                  {Array.from({ length: votesTotal || totalAlive }).map((_, i) => (
+                    <div key={i} style={{ width: 10, height: 10, borderRadius: "50%", background: i < votesDone ? "var(--accent)" : "var(--surface2)", transition: "background .3s" }} />
+                  ))}
+                </div>
+                <p style={{ textAlign: "center", fontSize: 12, color: "var(--text3)", marginBottom: 16, fontFamily: "var(--font-mono)" }}>
+                  {votesDone} / {votesTotal || totalAlive} ont voté
+                </p>
+
+                {showCountdown ? (
+                  <div style={{ ...card, textAlign: "center", padding: "40px 24px", animation: "fadeUp .3s ease" }}>
+                    <div style={{ fontSize: 12, color: "var(--text3)", marginBottom: 8, textTransform: "uppercase", letterSpacing: 2 }}>Révélation dans</div>
+                    <div style={{ fontSize: 80, fontWeight: 900, fontFamily: "var(--font-display)", color: "var(--accent)", animation: "pulse 1s infinite", lineHeight: 1 }}>{voteCountdown}</div>
+                  </div>
+                ) : !amAlive ? (
+                  <div style={{ ...card, textAlign: "center", padding: "32px 24px" }}>
+                    <div style={{ fontSize: 40, marginBottom: 8 }}>👻</div>
+                    <h3 style={{ fontSize: 16, fontWeight: 800, color: "#888" }}>Mode spectateur</h3>
+                    <p style={{ fontSize: 13, color: "var(--text3)", marginTop: 8 }}>Tu observes le vote. Patience…</p>
+                  </div>
+                ) : iVoted ? (
+                  <div style={{ ...card, textAlign: "center", padding: "28px 24px", animation: "fadeUp .3s ease" }}>
+                    <div style={{ fontSize: 40, marginBottom: 8 }}>✅</div>
+                    <h3 style={{ fontSize: 18, fontWeight: 800, color: "var(--accent)" }}>Vote enregistré !</h3>
+                    <p style={{ fontSize: 13, color: "var(--text3)", marginTop: 8 }}>En attente des autres joueurs…</p>
+                  </div>
+                ) : (
+                  <div style={{ ...card, padding: "20px 16px" }}>
+                    <div style={{ textAlign: "center", marginBottom: 14 }}>
+                      <div style={{ fontSize: 32, marginBottom: 4 }}>🗳️</div>
+                      <p style={{ fontSize: 15, fontWeight: 700 }}>Qui veux-tu éliminer ?</p>
+                      <p style={{ fontSize: 11, color: "var(--text3)", marginTop: 4 }}>Vote secret</p>
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      {targets.map((target) => (
+                        <button key={target.idx} onClick={() => {
+                          if (isHost) {
+                            setVotes((p) => ({ ...p, [mySlotIdx]: target.idx }));
+                          } else {
+                            sendToHost({ type: "cast_vote", playerId: myPlayerId, targetIdx: target.idx });
+                          }
+                          setIVoted(true);
+                        }} style={{
+                          padding: "14px 16px", borderRadius: 14, cursor: "pointer", fontSize: 15, fontWeight: 600,
+                          border: "2px solid var(--border)", display: "flex", alignItems: "center", gap: 10,
+                          background: "var(--surface2)", color: "var(--text)", width: "100%",
+                        }}>
+                          <Avatar emoji={target.emoji} photo={target.photo} size={32} style={{ border: "none" }} />
+                          {target.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
+          {/* ── VOTE PHASE — SOLO QUICK ── */}
+          {gamePhase === "vote" && playMode !== "multi" && quickVote && (
             <div style={{ ...card, padding: "20px 16px" }}>
               <div style={{ textAlign: "center", marginBottom: 16 }}>
                 <div style={{ fontSize: 36, marginBottom: 6 }}>🗳️</div>
@@ -1254,7 +2333,7 @@ const UndercoverApp = function UndercoverApp() {
             </div>
           )}
 
-          {gamePhase === "vote" && !quickVote && (
+          {gamePhase === "vote" && playMode !== "multi" && !quickVote && (
             <>
               {voteIndex < voteOrder.length ? (() => {
                 const voterIdx = voteOrder[voteIndex];
@@ -1524,8 +2603,8 @@ const UndercoverApp = function UndercoverApp() {
           )}
         </div>
 
-        {/* Continue button */}
-        {elimAnimPhase >= 2 && (
+        {/* Continue button — host only in multi */}
+        {elimAnimPhase >= 2 && (playMode !== "multi" || isHost) && (
           <button onClick={() => {
             if (elimRevealCallback) elimRevealCallback();
           }} style={{
@@ -1538,6 +2617,9 @@ const UndercoverApp = function UndercoverApp() {
           }}>
             {ucWins ? "🕵️ Voir les résultats" : civilWins ? "🎉 Voir les résultats" : isUC ? "🎉 On continue !" : "😤 On continue..."}
           </button>
+        )}
+        {elimAnimPhase >= 2 && playMode === "multi" && !isHost && (
+          <p style={{ marginTop: 32, color: "var(--text3)", fontSize: 13, textAlign: "center" }}>⏳ En attente de l'hôte…</p>
         )}
       </div>
     );
@@ -1562,6 +2644,17 @@ const UndercoverApp = function UndercoverApp() {
     return (
       <div style={cs}><style>{cssVars}</style>
         <div style={{ width: "100%", maxWidth: 420 }}>
+          {playMode === "multi" && (() => {
+            const me = mySlotIdx >= 0 ? players[mySlotIdx] : null;
+            const amSpec = me && !me.alive;
+            return (
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, fontSize: 11, color: "var(--text3)" }}>
+                <span style={{ fontFamily: "var(--font-mono)" }}>{isHost ? "🎯" : "🔗"} {roomCode}</span>
+                {amSpec && <span style={{ background: "#88888822", color: "#888", padding: "3px 10px", borderRadius: 8, fontWeight: 700 }}>👻 SPECTATEUR</span>}
+                {me && me.alive && <span style={{ background: "#E6394622", color: "#E63946", padding: "3px 10px", borderRadius: 8, fontWeight: 700 }}>{me.name}</span>}
+              </div>
+            );
+          })()}
           {/* Header */}
           <div style={{ textAlign: "center", marginBottom: 24 }}>
             <div style={{ fontSize: 48, marginBottom: 8, animation: "pulse 1.5s infinite" }}>⚔️</div>
@@ -1582,13 +2675,16 @@ const UndercoverApp = function UndercoverApp() {
               </div>
               {sdSpeakingOrder.length > 0 && sdSpeakingIndex < sdSpeakingOrder.length && (() => {
                 const sp = players[sdSpeakingOrder[sdSpeakingIndex]];
+                const isMyTurn = playMode === "multi" && sp && sp.playerId === myPlayerId;
                 return (
                   <div style={{ ...card, textAlign: "center", padding: "28px 20px", border: "1px solid #E6394644", boxShadow: "0 8px 32px rgba(230,57,70,.15)", animation: "fadeUp .4s ease" }}>
                     <p style={{ fontSize: 12, color: "var(--text3)", marginBottom: 8, fontFamily: "var(--font-mono)" }}>Tour {sdSpeakingIndex + 1} / {sdSpeakingOrder.length}</p>
                     <Avatar emoji={sp.emoji} photo={sp.photo} size={60} style={{ margin: "0 auto 12px", border: "3px solid #E63946" }} />
                     <p style={{ fontSize: 13, color: "var(--text2)", marginBottom: 4 }}>C'est au tour de</p>
-                    <h3 style={{ fontSize: 24, fontWeight: 900, fontFamily: "var(--font-display)", color: "#E63946" }}>{sp.name}</h3>
-                    <p style={{ fontSize: 13, color: "var(--text2)", marginTop: 10 }}>Redonne un indice pour te défendre !</p>
+                    <h3 style={{ fontSize: 24, fontWeight: 900, fontFamily: "var(--font-display)", color: "#E63946" }}>{sp.name}{isMyTurn && " (toi)"}</h3>
+                    <p style={{ fontSize: 13, color: "var(--text2)", marginTop: 10 }}>
+                      {playMode === "multi" ? (isMyTurn ? "À toi de défendre ton mot !" : "Écoute la défense.") : "Redonne un indice pour te défendre !"}
+                    </p>
                     {timerEnabled && <div style={{ marginTop: 14, display: "flex", justifyContent: "center" }}><Timer key={`sd-${sdSpeakingIndex}`} seconds={Math.min(timerSeconds, 30)} onEnd={() => {}} /></div>}
                   </div>
                 );
@@ -1601,89 +2697,197 @@ const UndercoverApp = function UndercoverApp() {
                   </div>
                 ))}
               </div>
-              <button onClick={() => {
-                if (sdSpeakingIndex < sdSpeakingOrder.length - 1) setSdSpeakingIndex(sdSpeakingIndex + 1);
-                else {
-                  const aliveIdx = players.map((p, i) => (p.alive ? i : -1)).filter((i) => i >= 0);
-                  setSdVoteOrder(shuffle(aliveIdx));
-                  setSdVoteIndex(0);
-                  setSdVoteStep("choosing");
-                  setSdAllSpoken(true);
+              {(() => {
+                const sp = players[sdSpeakingOrder[sdSpeakingIndex]];
+                if (playMode === "multi") {
+                  const isMyTurn = sp && sp.playerId === myPlayerId;
+                  if (!isMyTurn) {
+                    return (
+                      <div style={{ marginTop: 16, padding: "12px", background: "var(--surface2)", borderRadius: 12, textAlign: "center", color: "var(--text3)", fontSize: 13 }}>
+                        ⏳ {sp?.name} doit cliquer sur son téléphone…
+                      </div>
+                    );
+                  }
+                  const advance = () => {
+                    if (isHost) {
+                      if (sdSpeakingIndex < sdSpeakingOrder.length - 1) setSdSpeakingIndex(sdSpeakingIndex + 1);
+                      else {
+                        const aliveIdx = players.map((p, i) => (p.alive ? i : -1)).filter((i) => i >= 0);
+                        setSdVoteOrder(shuffle(aliveIdx));
+                        setSdVoteIndex(0);
+                        setSdVoteStep("choosing");
+                        setSdAllSpoken(true);
+                      }
+                    } else {
+                      sendToHost({ type: "next_sd_speaker", playerId: myPlayerId });
+                    }
+                  };
+                  return (
+                    <button onClick={advance} style={{ ...btnPrimaryConst, marginTop: 16, width: "100%", background: "linear-gradient(135deg, #E63946, #FF6B35)" }}>
+                      {sdSpeakingIndex < sdSpeakingOrder.length - 1 ? "✓ J'ai fini, joueur suivant →" : "✅ J'ai fini de parler"}
+                    </button>
+                  );
                 }
-              }} style={{ ...btnPrimaryConst, marginTop: 16, width: "100%", background: "linear-gradient(135deg, #E63946, #FF6B35)" }}>
-                {sdSpeakingIndex < sdSpeakingOrder.length - 1 ? "Joueur suivant →" : "✅ Passer au vote"}
-              </button>
+                return (
+                  <button onClick={() => {
+                    if (sdSpeakingIndex < sdSpeakingOrder.length - 1) setSdSpeakingIndex(sdSpeakingIndex + 1);
+                    else {
+                      const aliveIdx = players.map((p, i) => (p.alive ? i : -1)).filter((i) => i >= 0);
+                      setSdVoteOrder(shuffle(aliveIdx));
+                      setSdVoteIndex(0);
+                      setSdVoteStep("choosing");
+                      setSdAllSpoken(true);
+                    }
+                  }} style={{ ...btnPrimaryConst, marginTop: 16, width: "100%", background: "linear-gradient(135deg, #E63946, #FF6B35)" }}>
+                    {sdSpeakingIndex < sdSpeakingOrder.length - 1 ? "Joueur suivant →" : "✅ Passer au vote"}
+                  </button>
+                );
+              })()}
             </>
           ) : (
             <>
-              {sdVoteIndex < sdVoteOrder.length ? (() => {
-                const voterIdx = sdVoteOrder[sdVoteIndex];
-                const voter = players[voterIdx];
-                const sdTargets = tiedPlayers.filter((tIdx) => tIdx !== voterIdx);
-                const isLastSd = sdVoteIndex >= sdVoteOrder.length - 1;
-                const nextSdVoter = !isLastSd ? players[sdVoteOrder[sdVoteIndex + 1]] : null;
-
-                if (sdVoteStep === "choosing") return (
-                  <div style={{ ...card, textAlign: "center", padding: "24px 20px", animation: "fadeUp .3s ease" }}>
-                    <p style={{ fontSize: 12, color: "var(--text3)", marginBottom: 12, fontFamily: "var(--font-mono)" }}>
-                      Vote {sdVoteIndex + 1} / {sdVoteOrder.length}
-                    </p>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 16 }}>
-                      <Avatar emoji={voter.emoji} photo={voter.photo} size={32} style={{ border: "none" }} />
-                      <h3 style={{ fontSize: 18, fontWeight: 800, fontFamily: "var(--font-display)" }}>{voter.name}, qui éliminer ?</h3>
-                    </div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                      {sdTargets.map((tIdx) => (
-                        <button key={tIdx} onClick={() => { castSdVote(voterIdx, tIdx); setSdVoteStep("confirmed"); }} style={{
-                          padding: "14px 16px", borderRadius: 14, cursor: "pointer", fontSize: 15, fontWeight: 600,
-                          transition: "all .2s", border: "2px solid #E6394644", display: "flex", alignItems: "center", gap: 10,
-                          background: "var(--surface2)", color: "var(--text)", width: "100%",
-                        }}>
-                          <Avatar emoji={players[tIdx]?.emoji} photo={players[tIdx]?.photo} size={32} style={{ border: "none" }} />
-                          {players[tIdx]?.name}
-                        </button>
+              {/* ── SD VOTE — MULTI ── */}
+              {playMode === "multi" ? (() => {
+                const me = mySlotIdx >= 0 ? players[mySlotIdx] : null;
+                const amAlive = !!(me && me.alive);
+                const sdTargetsForMe = tiedPlayers.filter((tIdx) => tIdx !== mySlotIdx);
+                const totalAlive = alive.length;
+                const votesDone = isHost ? Object.keys(suddenDeathVotes).length : sdVoteCounts.done;
+                const votesTotal = isHost ? sdVoteOrder.length : sdVoteCounts.total;
+                const showCountdown = voteCountdown > 0;
+                return (
+                  <div>
+                    <div style={{ display: "flex", justifyContent: "center", gap: 4, marginBottom: 14 }}>
+                      {Array.from({ length: votesTotal || totalAlive }).map((_, i) => (
+                        <div key={i} style={{ width: 10, height: 10, borderRadius: "50%", background: i < votesDone ? "#E63946" : "var(--surface2)", transition: "background .3s" }} />
                       ))}
                     </div>
-                  </div>
-                );
-
-                if (sdVoteStep === "confirmed") return (
-                  <div style={{ ...card, textAlign: "center", padding: "28px 24px", animation: "fadeUp .3s ease" }}>
-                    <div style={{ fontSize: 40, marginBottom: 8 }}>✅</div>
-                    <h3 style={{ fontSize: 18, fontWeight: 800, fontFamily: "var(--font-display)", color: "#E63946" }}>Vote enregistré !</h3>
-                    {nextSdVoter ? (
-                      <>
-                        <p style={{ fontSize: 13, color: "var(--text2)", marginTop: 16, marginBottom: 4 }}>Passe le téléphone à</p>
-                        <Avatar emoji={nextSdVoter.emoji} photo={nextSdVoter.photo} size={56} style={{ margin: "8px auto", border: "3px solid #E63946" }} />
-                        <h4 style={{ fontSize: 22, fontWeight: 900, fontFamily: "var(--font-display)", color: "#E63946" }}>{nextSdVoter.name}</h4>
-                        <p style={{ fontSize: 11, color: "var(--text3)", marginTop: 8 }}>Les autres, ne regardez pas !</p>
-                      </>
+                    <p style={{ textAlign: "center", fontSize: 12, color: "var(--text3)", marginBottom: 16, fontFamily: "var(--font-mono)" }}>
+                      {votesDone} / {votesTotal || totalAlive} ont voté
+                    </p>
+                    {showCountdown ? (
+                      <div style={{ ...card, textAlign: "center", padding: "40px 24px" }}>
+                        <div style={{ fontSize: 12, color: "var(--text3)", marginBottom: 8, textTransform: "uppercase", letterSpacing: 2 }}>Révélation dans</div>
+                        <div style={{ fontSize: 80, fontWeight: 900, fontFamily: "var(--font-display)", color: "#E63946", animation: "pulse 1s infinite", lineHeight: 1 }}>{voteCountdown}</div>
+                      </div>
+                    ) : !amAlive ? (
+                      <div style={{ ...card, textAlign: "center", padding: "32px 24px" }}>
+                        <div style={{ fontSize: 40, marginBottom: 8 }}>👻</div>
+                        <h3 style={{ fontSize: 16, fontWeight: 800, color: "#888" }}>Mode spectateur</h3>
+                        <p style={{ fontSize: 13, color: "var(--text3)", marginTop: 8 }}>Tu observes la mort subite.</p>
+                      </div>
+                    ) : iSdVoted ? (
+                      <div style={{ ...card, textAlign: "center", padding: "28px 24px" }}>
+                        <div style={{ fontSize: 40, marginBottom: 8 }}>✅</div>
+                        <h3 style={{ fontSize: 18, fontWeight: 800, color: "#E63946" }}>Vote enregistré !</h3>
+                        <p style={{ fontSize: 13, color: "var(--text3)", marginTop: 8 }}>En attente des autres…</p>
+                      </div>
                     ) : (
-                      <p style={{ fontSize: 13, color: "var(--text3)", marginTop: 8 }}>Tous les votes sont faits</p>
+                      <div style={{ ...card, padding: "20px 16px" }}>
+                        <div style={{ textAlign: "center", marginBottom: 14 }}>
+                          <div style={{ fontSize: 32, marginBottom: 4 }}>⚔️</div>
+                          <p style={{ fontSize: 15, fontWeight: 700 }}>Qui veux-tu éliminer ?</p>
+                          <p style={{ fontSize: 11, color: "var(--text3)", marginTop: 4 }}>Vote secret entre les ex-aequo</p>
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                          {sdTargetsForMe.map((tIdx) => (
+                            <button key={tIdx} onClick={() => {
+                              if (isHost) {
+                                setSuddenDeathVotes((p) => ({ ...p, [mySlotIdx]: tIdx }));
+                              } else {
+                                sendToHost({ type: "cast_sd_vote", playerId: myPlayerId, targetIdx: tIdx });
+                              }
+                              setISdVoted(true);
+                            }} style={{
+                              padding: "14px 16px", borderRadius: 14, cursor: "pointer", fontSize: 15, fontWeight: 600,
+                              border: "2px solid #E6394644", display: "flex", alignItems: "center", gap: 10,
+                              background: "var(--surface2)", color: "var(--text)", width: "100%",
+                            }}>
+                              <Avatar emoji={players[tIdx]?.emoji} photo={players[tIdx]?.photo} size={32} style={{ border: "none" }} />
+                              {players[tIdx]?.name}
+                            </button>
+                          ))}
+                          {sdTargetsForMe.length === 0 && (
+                            <p style={{ textAlign: "center", color: "var(--text3)", fontSize: 13 }}>Tu n'es pas dans les ex-aequo. Tu peux voter pour n'importe qui parmi eux.</p>
+                          )}
+                        </div>
+                      </div>
                     )}
-                    <button onClick={() => {
-                      if (!isLastSd) {
-                        setSdVoteIndex(sdVoteIndex + 1);
-                        setSdVoteStep("choosing");
-                      } else {
-                        setSdVoteStep("allvoted");
-                        setSdVoteIndex(sdVoteOrder.length);
-                      }
-                    }} style={{ ...btnPrimaryConst, width: "100%", marginTop: 20, background: "linear-gradient(135deg, #E63946, #FF6B35)" }}>
-                      {!isLastSd ? "Votant suivant →" : "Tous les votes sont faits ✓"}
-                    </button>
                   </div>
                 );
-                return null;
               })() : (
-                <div style={{ ...card, textAlign: "center", padding: "32px 24px" }}>
-                  <div style={{ fontSize: 48, marginBottom: 12 }}>🔮</div>
-                  <h3 style={{ fontSize: 20, fontWeight: 800, fontFamily: "var(--font-display)" }}>Tous les votes sont tombés !</h3>
-                  <p style={{ fontSize: 13, color: "var(--text2)", marginTop: 8, marginBottom: 20 }}>{sdVoteOrder.length} votes secrets</p>
-                  <button onClick={resolveSd} style={{ ...btnPrimaryConst, width: "100%", fontSize: 18, background: "linear-gradient(135deg, #E63946, #FF6B35)" }}>
-                    ⚡ Résoudre
-                  </button>
-                </div>
+                /* ── SD VOTE — SOLO (original) ── */
+                <>
+                  {sdVoteIndex < sdVoteOrder.length ? (() => {
+                    const voterIdx = sdVoteOrder[sdVoteIndex];
+                    const voter = players[voterIdx];
+                    const sdTargets = tiedPlayers.filter((tIdx) => tIdx !== voterIdx);
+                    const isLastSd = sdVoteIndex >= sdVoteOrder.length - 1;
+                    const nextSdVoter = !isLastSd ? players[sdVoteOrder[sdVoteIndex + 1]] : null;
+
+                    if (sdVoteStep === "choosing") return (
+                      <div style={{ ...card, textAlign: "center", padding: "24px 20px", animation: "fadeUp .3s ease" }}>
+                        <p style={{ fontSize: 12, color: "var(--text3)", marginBottom: 12, fontFamily: "var(--font-mono)" }}>
+                          Vote {sdVoteIndex + 1} / {sdVoteOrder.length}
+                        </p>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 16 }}>
+                          <Avatar emoji={voter.emoji} photo={voter.photo} size={32} style={{ border: "none" }} />
+                          <h3 style={{ fontSize: 18, fontWeight: 800, fontFamily: "var(--font-display)" }}>{voter.name}, qui éliminer ?</h3>
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                          {sdTargets.map((tIdx) => (
+                            <button key={tIdx} onClick={() => { castSdVote(voterIdx, tIdx); setSdVoteStep("confirmed"); }} style={{
+                              padding: "14px 16px", borderRadius: 14, cursor: "pointer", fontSize: 15, fontWeight: 600,
+                              transition: "all .2s", border: "2px solid #E6394644", display: "flex", alignItems: "center", gap: 10,
+                              background: "var(--surface2)", color: "var(--text)", width: "100%",
+                            }}>
+                              <Avatar emoji={players[tIdx]?.emoji} photo={players[tIdx]?.photo} size={32} style={{ border: "none" }} />
+                              {players[tIdx]?.name}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    );
+
+                    if (sdVoteStep === "confirmed") return (
+                      <div style={{ ...card, textAlign: "center", padding: "28px 24px", animation: "fadeUp .3s ease" }}>
+                        <div style={{ fontSize: 40, marginBottom: 8 }}>✅</div>
+                        <h3 style={{ fontSize: 18, fontWeight: 800, fontFamily: "var(--font-display)", color: "#E63946" }}>Vote enregistré !</h3>
+                        {nextSdVoter ? (
+                          <>
+                            <p style={{ fontSize: 13, color: "var(--text2)", marginTop: 16, marginBottom: 4 }}>Passe le téléphone à</p>
+                            <Avatar emoji={nextSdVoter.emoji} photo={nextSdVoter.photo} size={56} style={{ margin: "8px auto", border: "3px solid #E63946" }} />
+                            <h4 style={{ fontSize: 22, fontWeight: 900, fontFamily: "var(--font-display)", color: "#E63946" }}>{nextSdVoter.name}</h4>
+                            <p style={{ fontSize: 11, color: "var(--text3)", marginTop: 8 }}>Les autres, ne regardez pas !</p>
+                          </>
+                        ) : (
+                          <p style={{ fontSize: 13, color: "var(--text3)", marginTop: 8 }}>Tous les votes sont faits</p>
+                        )}
+                        <button onClick={() => {
+                          if (!isLastSd) {
+                            setSdVoteIndex(sdVoteIndex + 1);
+                            setSdVoteStep("choosing");
+                          } else {
+                            setSdVoteStep("allvoted");
+                            setSdVoteIndex(sdVoteOrder.length);
+                          }
+                        }} style={{ ...btnPrimaryConst, width: "100%", marginTop: 20, background: "linear-gradient(135deg, #E63946, #FF6B35)" }}>
+                          {!isLastSd ? "Votant suivant →" : "Tous les votes sont faits ✓"}
+                        </button>
+                      </div>
+                    );
+                    return null;
+                  })() : (
+                    <div style={{ ...card, textAlign: "center", padding: "32px 24px" }}>
+                      <div style={{ fontSize: 48, marginBottom: 12 }}>🔮</div>
+                      <h3 style={{ fontSize: 20, fontWeight: 800, fontFamily: "var(--font-display)" }}>Tous les votes sont tombés !</h3>
+                      <p style={{ fontSize: 13, color: "var(--text2)", marginTop: 8, marginBottom: 20 }}>{sdVoteOrder.length} votes secrets</p>
+                      <button onClick={resolveSd} style={{ ...btnPrimaryConst, width: "100%", fontSize: 18, background: "linear-gradient(135deg, #E63946, #FF6B35)" }}>
+                        ⚡ Résoudre
+                      </button>
+                    </div>
+                  )}
+                </>
               )}
             </>
           )}
@@ -1787,8 +2991,40 @@ const UndercoverApp = function UndercoverApp() {
           })}
         </div>
         <div style={{ display: "flex", gap: 12, marginTop: 24, width: "100%", maxWidth: 360, animation: "resultsFadeIn .5s ease .6s both" }}>
-          <button onClick={newRound} style={{ ...btnPrimaryConst, flex: 1 }}>🔄 Nouvelle manche</button>
-          <button onClick={() => { setScores({}); setRound(1); setUsedPairs([]); transition(() => setScreen("home")); }} style={{ ...btnSecondaryConst, flex: 1 }}>🏠 Accueil</button>
+          {playMode === "multi" ? (
+            isHost ? (
+              <>
+                <button onClick={() => {
+                  // Go back to lobby — keep room, players reconnect / stay
+                  setRound((r) => r + 1);
+                  // Rebuild lobbyPlayers from current connected players (excluding host)
+                  const stillConnected = players.filter(p => p.connected !== false && p.playerId !== myPlayerId)
+                    .map(p => ({ playerId: p.playerId, name: p.name, emoji: p.emoji, photo: p.photo, connected: true }));
+                  setLobbyPlayers(stillConnected);
+                  setPlayers([]);
+                  setMySlotIdx(-1); setMyWord(null); setMyRole(null);
+                  setEliminated([]); setVotes({}); setSuddenDeathVotes({}); setWinner(null);
+                  setVoteCountdown(0); setIVoted(false); setISdVoted(false);
+                  transition(() => setScreen("multi_lobby"));
+                }} style={{ ...btnPrimaryConst, flex: 1 }}>🔄 Retour au lobby</button>
+                <button onClick={() => { leaveRoom(); setScores({}); setRound(1); setUsedPairs([]); transition(() => setScreen("home")); }} style={{ ...btnSecondaryConst, flex: 1 }}>🏠 Accueil</button>
+              </>
+            ) : (
+              <>
+                <button onClick={() => {
+                  setMySlotIdx(-1); setMyWord(null); setMyRole(null);
+                  setVoteCountdown(0); setIVoted(false); setISdVoted(false);
+                  transition(() => setScreen("multi_lobby"));
+                }} style={{ ...btnPrimaryConst, flex: 1 }}>🔄 Retour au lobby</button>
+                <button onClick={() => { leaveRoom(); setScores({}); setRound(1); setUsedPairs([]); transition(() => setScreen("home")); }} style={{ ...btnSecondaryConst, flex: 1 }}>🏠 Quitter</button>
+              </>
+            )
+          ) : (
+            <>
+              <button onClick={newRound} style={{ ...btnPrimaryConst, flex: 1 }}>🔄 Nouvelle manche</button>
+              <button onClick={() => { setScores({}); setRound(1); setUsedPairs([]); transition(() => setScreen("home")); }} style={{ ...btnSecondaryConst, flex: 1 }}>🏠 Accueil</button>
+            </>
+          )}
         </div>
       </div>
     );
