@@ -730,6 +730,9 @@ const UndercoverApp = function UndercoverApp() {
   const [iVoted, setIVoted] = useState(false);
   const [iSdVoted, setISdVoted] = useState(false);
   const [iAmReadyForReveal, setIAmReadyForReveal] = useState(false);
+  const [hostConnectionLost, setHostConnectionLost] = useState(false);
+  // Ref-mirror of usedPairs — read synchronously so back-to-back rounds don't read a stale value
+  const usedPairsRef = useRef([]);
   // Refs for PeerJS
   const peerRef = useRef(null);
   const connsRef = useRef(new Map()); // host: playerId -> DataConnection
@@ -793,9 +796,10 @@ const UndercoverApp = function UndercoverApp() {
   const startGame = () => {
     let words;
     {
-      const result = generateWords(theme, difficulty, mixThemes, usedPairs);
+      const result = generateWords(theme, difficulty, mixThemes, usedPairsRef.current);
       words = result.pair;
-      setUsedPairs((prev) => [...prev, result.key]);
+      usedPairsRef.current = [...usedPairsRef.current, result.key];
+      setUsedPairs(usedPairsRef.current);
     }
     const roles = assignRoles(playerCount, mode, customUC, customMW);
     const names = getFinalNames();
@@ -813,12 +817,22 @@ const UndercoverApp = function UndercoverApp() {
 
   // Multi version: lobbyList = [{playerId, name, emoji, photo}, ...] in order (host first)
   const startGameMulti = (lobbyList) => {
-    const result = generateWords(theme, difficulty, mixThemes, usedPairs);
+    // FULL RESET of any leftover round state — prevents stale orderings from previous game
+    setSpeakingOrder([]); setSpeakingIndex(0); setAllSpoken(false);
+    setSdSpeakingOrder([]); setSdSpeakingIndex(0); setSdAllSpoken(false);
+    setVoteOrder([]); setSdVoteOrder([]);
+    setVotes({}); setSuddenDeathVotes({});
+    setVoteCountdown(0); setIVoted(false); setISdVoted(false);
+    setEliminated([]); setWinner(null);
+    setTiedPlayers([]); setSuddenDeathCount(0); setTieMessage(""); setRandomElimMessage("");
+    setElimRevealIdx(null); setElimAnimPhase(0); setElimWinType(null);
+    setRevealIndex(0); setWordVisible(false);
+
+    const result = generateWords(theme, difficulty, mixThemes, usedPairsRef.current);
     const words = result.pair;
-    setUsedPairs((prev) => [...prev, result.key]);
-    // Shuffle the player list so the host doesn't systematically end up at slot 0.
-    // Roles and speaking order are independently randomized too, but shuffling here also
-    // randomizes the visible slot positions on the game/results screens.
+    // Update ref synchronously to avoid race on rapid back-to-back games
+    usedPairsRef.current = [...usedPairsRef.current, result.key];
+    setUsedPairs(usedPairsRef.current);
     const shuffledLobby = shuffle(lobbyList);
     const count = shuffledLobby.length;
     const roles = assignRoles(count, mode, customUC, customMW);
@@ -833,13 +847,6 @@ const UndercoverApp = function UndercoverApp() {
       connected: true,
     }));
     setPlayers(np);
-    setRevealIndex(0); setWordVisible(false);
-    setEliminated([]); setVotes({}); setWinner(null);
-    setSuddenDeathCount(0); setTiedPlayers([]); setSuddenDeathVotes({});
-    setTieMessage(""); setRandomElimMessage("");
-    setVoteCountdown(0); setIVoted(false); setISdVoted(false);
-    setAllSpoken(false); setSdAllSpoken(false);
-    setSpeakingIndex(0); setSdSpeakingIndex(0);
 
     // Send each non-host player their private role/word
     np.forEach((p, idx) => {
@@ -1031,6 +1038,7 @@ const UndercoverApp = function UndercoverApp() {
   useEffect(() => { myPhotoRef.current = myPhoto; }, [myPhoto]);
   useEffect(() => { lobbyPlayersRef.current = lobbyPlayers; }, [lobbyPlayers]);
   useEffect(() => { slotsCountRef.current = slotsCount; }, [slotsCount]);
+  useEffect(() => { usedPairsRef.current = usedPairs; }, [usedPairs]);
 
   // Build the canonical lobby payload (host first, then connected joiners)
   const buildLobbyPayload = () => ({
@@ -1441,6 +1449,9 @@ const UndercoverApp = function UndercoverApp() {
   // ─── CLIENT: receive from host ───
   const onClientReceive = (msg) => {
     if (!msg || typeof msg !== "object") return;
+    // We just got a message from the host — connection is alive
+    setHostConnectionLost(false);
+    setNetworkError((prev) => (prev === "Connexion à l'hôte perdue." || prev === "Reconnexion en cours…") ? "" : prev);
     switch (msg.type) {
       case "welcome": {
         setHostPlayerId(msg.hostPlayerId);
@@ -1516,7 +1527,12 @@ const UndercoverApp = function UndercoverApp() {
         setMySlotIdx(-1); setMyWord(null); setMyRole(null);
         setEliminated([]); setVotes({}); setSuddenDeathVotes({}); setWinner(null);
         setVoteCountdown(0); setIVoted(false); setISdVoted(false);
-        setTiedPlayers([]); setSuddenDeathCount(0);
+        setTiedPlayers([]); setSuddenDeathCount(0); setTieMessage(""); setRandomElimMessage("");
+        setSdAllSpoken(false); setAllSpoken(false);
+        setSpeakingOrder([]); setSpeakingIndex(0); setSdSpeakingOrder([]); setSdSpeakingIndex(0);
+        setVoteOrder([]); setSdVoteOrder([]);
+        setElimRevealIdx(null); setElimAnimPhase(0); setElimWinType(null);
+        setWordVisible(false);
         setNetworkError("L'hôte a mis fin à la partie.");
         transition(() => setScreen("multi_lobby"));
         // Clear the notif after a few seconds
@@ -1538,8 +1554,12 @@ const UndercoverApp = function UndercoverApp() {
   };
 
   const onHostDisconnect = () => {
+    if (isHostRef.current) return;
+    // Mark connection as lost so the UI can show a recovery overlay.
+    // The visibility-change effect will try to auto-reconnect — if that succeeds
+    // the join handler will clear this flag.
+    setHostConnectionLost(true);
     setNetworkError("Connexion à l'hôte perdue.");
-    // Don't auto-leave, allow user to retry
   };
 
   // ─── HOST-ONLY: end game manually (e.g., a player left and is blocking) ───
@@ -1555,6 +1575,9 @@ const UndercoverApp = function UndercoverApp() {
     setTiedPlayers([]); setSuddenDeathCount(0); setTieMessage(""); setRandomElimMessage("");
     setSdAllSpoken(false); setAllSpoken(false);
     setSpeakingOrder([]); setSpeakingIndex(0); setSdSpeakingOrder([]); setSdSpeakingIndex(0);
+    setVoteOrder([]); setSdVoteOrder([]);
+    setElimRevealIdx(null); setElimAnimPhase(0); setElimWinType(null);
+    setWordVisible(false);
     // Rebuild lobbyPlayers from currently-connected non-host players
     const stillConnected = (lobbyPlayersRef.current || []).filter(p => p.connected !== false);
     setLobbyPlayers(stillConnected);
@@ -1649,9 +1672,42 @@ const UndercoverApp = function UndercoverApp() {
 
   // ─────────────────────────────────────────────────────
 
+  // ═══════════ Disconnect overlay (clients only) ═══════════
+  const DisconnectOverlay = () => {
+    if (!hostConnectionLost) return null;
+    if (playMode !== "multi" || isHost) return null;
+    if (["home", "multi_choose", "multi_host_setup", "multi_join_setup"].includes(screen)) return null;
+    return (
+      <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.85)", backdropFilter: "blur(8px)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+        <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 20, padding: "32px 24px", maxWidth: 360, width: "100%", textAlign: "center" }}>
+          <div style={{ fontSize: 56, marginBottom: 12 }}>📡</div>
+          <h2 style={{ fontSize: 20, fontWeight: 800, fontFamily: "var(--font-display)", marginBottom: 8 }}>Connexion perdue</h2>
+          <p style={{ fontSize: 14, color: "var(--text2)", marginBottom: 6 }}>La connexion à l'hôte est rompue.</p>
+          <p style={{ fontSize: 12, color: "var(--text3)", marginBottom: 20 }}>Reconnexion automatique en cours…</p>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <button onClick={() => {
+              // Manual retry
+              setHostConnectionLost(false);
+              setNetworkError("Tentative de reconnexion…");
+              try { peerRef.current && peerRef.current.destroy(); } catch (e) {}
+              peerRef.current = null;
+              hostConnRef.current = null;
+              setTimeout(() => joinRoom(roomCode, myPseudo, myEmoji, myPhoto), 200);
+            }} style={{ ...btnPrimaryConst, width: "100%" }}>🔄 Réessayer maintenant</button>
+            <button onClick={() => {
+              leaveRoom();
+              setHostConnectionLost(false);
+              transition(() => setScreen("home"));
+            }} style={{ ...btnSecondaryConst, width: "100%" }}>🏠 Retour à l'accueil</button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   // ═══════════ HOME ═══════════
   if (screen === "home") return (
-    <div style={cs}><style>{cssVars}</style>
+    <div style={cs}><style>{cssVars}</style><DisconnectOverlay />
       <div style={{ textAlign: "center", marginTop: 40 }}>
         <div style={{ fontSize: 64, marginBottom: 8 }}>🕵️</div>
         <h1 style={{ fontFamily: "var(--font-display)", fontSize: "clamp(36px,8vw,56px)", fontWeight: 900, letterSpacing: -1, lineHeight: 1.1, background: "linear-gradient(135deg, var(--accent), var(--accent2))", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>UNDERCOVER</h1>
@@ -1687,7 +1743,7 @@ const UndercoverApp = function UndercoverApp() {
 
   // ═══════════ MULTI: Choose Create or Join ═══════════
   if (screen === "multi_choose") return (
-    <div style={cs}><style>{cssVars}</style>
+    <div style={cs}><style>{cssVars}</style><DisconnectOverlay />
       <button onClick={() => transition(() => setScreen("home"))} style={btnBack}>← Retour</button>
       <div style={{ textAlign: "center", marginBottom: 32, marginTop: 20 }}>
         <div style={{ fontSize: 56, marginBottom: 8 }}>🌐</div>
@@ -1717,7 +1773,7 @@ const UndercoverApp = function UndercoverApp() {
   if (screen === "multi_host_setup") {
     const canCreate = myPseudo.trim().length >= 1 && slotsCount >= 3 && slotsCount <= 12;
     return (
-      <div style={cs}><style>{cssVars}</style>
+      <div style={cs}><style>{cssVars}</style><DisconnectOverlay />
         {cameraOpenFor === "self" && (
           <CameraModal
             onCapture={(url) => { setMyPhoto(url); setCameraOpenFor(null); }}
@@ -1766,7 +1822,7 @@ const UndercoverApp = function UndercoverApp() {
   if (screen === "multi_join_setup") {
     const canJoin = myPseudo.trim().length >= 1 && /^[A-Z2-9]{6}$/.test(joinCode.toUpperCase());
     return (
-      <div style={cs}><style>{cssVars}</style>
+      <div style={cs}><style>{cssVars}</style><DisconnectOverlay />
         {cameraOpenFor === "self" && (
           <CameraModal
             onCapture={(url) => { setMyPhoto(url); setCameraOpenFor(null); }}
@@ -1833,7 +1889,7 @@ const UndercoverApp = function UndercoverApp() {
       } catch (e) { return roomCode; }
     })();
     return (
-      <div style={cs}><style>{cssVars}</style>
+      <div style={cs}><style>{cssVars}</style><DisconnectOverlay />
         <button onClick={() => { leaveRoom(); transition(() => setScreen("home")); }} style={btnBack}>← Quitter</button>
         <div style={{ textAlign: "center", marginBottom: 12 }}>
           <div style={{ fontSize: 36, marginBottom: 4 }}>{isHost ? "🎯" : "🔗"}</div>
@@ -2007,7 +2063,7 @@ const UndercoverApp = function UndercoverApp() {
 
   // ═══════════ SETUP ═══════════
   if (screen === "setup") return (
-    <div style={cs}><style>{cssVars}</style>
+    <div style={cs}><style>{cssVars}</style><DisconnectOverlay />
       <button onClick={() => transition(() => setScreen("home"))} style={btnBack}>← Retour</button>
       <h2 style={sectionTitle}>Configuration</h2>
       <div style={card}>
@@ -2134,7 +2190,7 @@ const UndercoverApp = function UndercoverApp() {
 
   // ═══════════ NAMES ═══════════
   if (screen === "names") return (
-    <div style={cs}><style>{cssVars}</style>
+    <div style={cs}><style>{cssVars}</style><DisconnectOverlay />
       {cameraOpenFor !== null && (
         <CameraModal
           onCapture={(url) => { updatePhoto(cameraOpenFor, url); setCameraOpenFor(null); }}
@@ -2313,7 +2369,7 @@ const UndercoverApp = function UndercoverApp() {
     const me = mySlotIdx >= 0 ? players[mySlotIdx] : null;
     const amSpectator = playMode === "multi" && me && !me.alive;
     return (
-      <div style={cs}><style>{cssVars}</style>
+      <div style={cs}><style>{cssVars}</style><DisconnectOverlay />
         <div style={{ width: "100%", maxWidth: 400 }}>
           {playMode === "multi" && (
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, fontSize: 11, color: "var(--text3)", gap: 8 }}>
@@ -2857,7 +2913,7 @@ const UndercoverApp = function UndercoverApp() {
     );
 
     return (
-      <div style={cs}><style>{cssVars}</style>
+      <div style={cs}><style>{cssVars}</style><DisconnectOverlay />
         <div style={{ width: "100%", maxWidth: 420 }}>
           {playMode === "multi" && (() => {
             const me = mySlotIdx >= 0 ? players[mySlotIdx] : null;
@@ -3240,28 +3296,44 @@ const UndercoverApp = function UndercoverApp() {
                   const stillConnected = players.filter(p => p.connected !== false && p.playerId !== myPlayerId)
                     .map(p => ({ playerId: p.playerId, name: p.name, emoji: p.emoji, photo: p.photo, connected: true }));
                   setLobbyPlayers(stillConnected);
+                  lobbyPlayersRef.current = stillConnected;
+                  // Full state reset so the next round doesn't inherit stale orderings
                   setPlayers([]);
                   setMySlotIdx(-1); setMyWord(null); setMyRole(null);
                   setEliminated([]); setVotes({}); setSuddenDeathVotes({}); setWinner(null);
                   setVoteCountdown(0); setIVoted(false); setISdVoted(false);
+                  setSpeakingOrder([]); setSpeakingIndex(0); setAllSpoken(false);
+                  setSdSpeakingOrder([]); setSdSpeakingIndex(0); setSdAllSpoken(false);
+                  setVoteOrder([]); setSdVoteOrder([]);
+                  setTiedPlayers([]); setSuddenDeathCount(0); setTieMessage(""); setRandomElimMessage("");
+                  setElimRevealIdx(null); setElimAnimPhase(0); setElimWinType(null);
                   transition(() => setScreen("multi_lobby"));
                 }} style={{ ...btnPrimaryConst, flex: 1 }}>🔄 Retour au lobby</button>
-                <button onClick={() => { leaveRoom(); setScores({}); setRound(1); setUsedPairs([]); transition(() => setScreen("home")); }} style={{ ...btnSecondaryConst, flex: 1 }}>🏠 Accueil</button>
+                <button onClick={() => { leaveRoom(); setScores({}); setRound(1); setUsedPairs([]); usedPairsRef.current = []; transition(() => setScreen("home")); }} style={{ ...btnSecondaryConst, flex: 1 }}>🏠 Accueil</button>
               </>
             ) : (
               <>
                 <button onClick={() => {
                   setMySlotIdx(-1); setMyWord(null); setMyRole(null);
                   setVoteCountdown(0); setIVoted(false); setISdVoted(false);
+                  // Reset stale orderings so we don't briefly show the previous game
+                  setSpeakingOrder([]); setSpeakingIndex(0); setAllSpoken(false);
+                  setSdSpeakingOrder([]); setSdSpeakingIndex(0); setSdAllSpoken(false);
+                  setVoteOrder([]); setSdVoteOrder([]);
+                  setVotes({}); setSuddenDeathVotes({});
+                  setEliminated([]); setWinner(null);
+                  setTiedPlayers([]); setSuddenDeathCount(0); setTieMessage(""); setRandomElimMessage("");
+                  setElimRevealIdx(null); setElimAnimPhase(0); setElimWinType(null);
+                  setWordVisible(false);
                   transition(() => setScreen("multi_lobby"));
                 }} style={{ ...btnPrimaryConst, flex: 1 }}>🔄 Retour au lobby</button>
-                <button onClick={() => { leaveRoom(); setScores({}); setRound(1); setUsedPairs([]); transition(() => setScreen("home")); }} style={{ ...btnSecondaryConst, flex: 1 }}>🏠 Quitter</button>
+                <button onClick={() => { leaveRoom(); setScores({}); setRound(1); setUsedPairs([]); usedPairsRef.current = []; transition(() => setScreen("home")); }} style={{ ...btnSecondaryConst, flex: 1 }}>🏠 Quitter</button>
               </>
             )
           ) : (
             <>
               <button onClick={newRound} style={{ ...btnPrimaryConst, flex: 1 }}>🔄 Nouvelle manche</button>
-              <button onClick={() => { setScores({}); setRound(1); setUsedPairs([]); transition(() => setScreen("home")); }} style={{ ...btnSecondaryConst, flex: 1 }}>🏠 Accueil</button>
+              <button onClick={() => { setScores({}); setRound(1); setUsedPairs([]); usedPairsRef.current = []; transition(() => setScreen("home")); }} style={{ ...btnSecondaryConst, flex: 1 }}>🏠 Accueil</button>
             </>
           )}
         </div>
