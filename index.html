@@ -736,6 +736,11 @@ const UndercoverApp = function UndercoverApp() {
   const hostConnRef = useRef(null);   // client: connection to host
   const isHostRef = useRef(false);    // mirror of isHost for use in refs/handlers
   const myPlayerIdRef = useRef("");
+  const myPseudoRef = useRef("");
+  const myEmojiRef = useRef("😎");
+  const myPhotoRef = useRef(null);
+  const lobbyPlayersRef = useRef([]);
+  const slotsCountRef = useRef(5);
   const broadcastRef = useRef(null);  // will hold the broadcast function
   const isClient = playMode === "multi" && !isHost;
   // Wake lock
@@ -1010,6 +1015,21 @@ const UndercoverApp = function UndercoverApp() {
   // Sync refs
   useEffect(() => { isHostRef.current = isHost; }, [isHost]);
   useEffect(() => { myPlayerIdRef.current = myPlayerId; }, [myPlayerId]);
+  useEffect(() => { myPseudoRef.current = myPseudo; }, [myPseudo]);
+  useEffect(() => { myEmojiRef.current = myEmoji; }, [myEmoji]);
+  useEffect(() => { myPhotoRef.current = myPhoto; }, [myPhoto]);
+  useEffect(() => { lobbyPlayersRef.current = lobbyPlayers; }, [lobbyPlayers]);
+  useEffect(() => { slotsCountRef.current = slotsCount; }, [slotsCount]);
+
+  // Build the canonical lobby payload (host first, then connected joiners)
+  const buildLobbyPayload = () => ({
+    type: "lobby",
+    players: [
+      { playerId: myPlayerIdRef.current, name: myPseudoRef.current, emoji: myEmojiRef.current, photo: myPhotoRef.current, connected: true },
+      ...lobbyPlayersRef.current.filter((p) => p.connected !== false),
+    ],
+    slotsCount: slotsCountRef.current,
+  });
 
   // Detect URL ?room=CODE on first load
   useEffect(() => {
@@ -1121,12 +1141,11 @@ const UndercoverApp = function UndercoverApp() {
       }
     });
     peer.on("connection", (conn) => {
-      conn.on("open", () => {
-        // Attach handlers
-        conn.on("data", (msg) => onHostReceive(conn, msg));
-        conn.on("close", () => onHostClientDisconnect(conn));
-        conn.on("error", () => onHostClientDisconnect(conn));
-      });
+      // Attach data handler IMMEDIATELY (before open) to avoid race where
+      // client sends "join" the moment its conn opens, before host attached its listener.
+      conn.on("data", (msg) => onHostReceive(conn, msg));
+      conn.on("close", () => onHostClientDisconnect(conn));
+      conn.on("error", () => onHostClientDisconnect(conn));
     });
   };
 
@@ -1216,6 +1235,7 @@ const UndercoverApp = function UndercoverApp() {
     switch (msg.type) {
       case "join": {
         // Add or reattach player
+        let added = false;
         setLobbyPlayers((prev) => {
           const idx = prev.findIndex((p) => p.playerId === msg.playerId);
           let next;
@@ -1225,13 +1245,16 @@ const UndercoverApp = function UndercoverApp() {
           } else {
             // Capacity check (host counts as 1)
             const totalConnected = prev.filter((p) => p.connected !== false).length + 1;
-            if (totalConnected >= slotsCount) {
+            if (totalConnected >= slotsCountRef.current) {
               sendToConn(conn, { type: "error", message: "Room pleine." });
               try { conn.close(); } catch (e) {}
               return prev;
             }
             next = [...prev, { playerId: msg.playerId, name: msg.pseudo, emoji: msg.emoji, photo: msg.photo, connected: true }];
+            added = true;
           }
+          // Update ref synchronously so buildLobbyPayload sees fresh data
+          lobbyPlayersRef.current = next;
           return next;
         });
         // Track connection
@@ -1239,6 +1262,14 @@ const UndercoverApp = function UndercoverApp() {
 
         // Welcome the joiner
         sendToConn(conn, { type: "welcome", playerId: msg.playerId, hostPlayerId: myPlayerIdRef.current });
+
+        // Send the full lobby IMMEDIATELY to everyone (incl. the new joiner so they see existing players)
+        const payload = buildLobbyPayload();
+        sendToConn(conn, payload);
+        // Also broadcast to all other clients so they see the new joiner
+        connsRef.current.forEach((c, pid) => {
+          if (pid !== msg.playerId) sendToConn(c, payload);
+        });
 
         // If we are mid-game and this player has a slot, restore their private data
         const slot = players.findIndex((p) => p.playerId === msg.playerId);
@@ -1304,11 +1335,25 @@ const UndercoverApp = function UndercoverApp() {
     if (!disconnectedId) return;
     connsRef.current.delete(disconnectedId);
     setLobbyPlayers((prev) => {
+      let next;
       // If game not started, remove from lobby. If started, mark as disconnected.
       if (players.length > 0) {
-        return prev.map((p) => p.playerId === disconnectedId ? { ...p, connected: false } : p);
+        next = prev.map((p) => p.playerId === disconnectedId ? { ...p, connected: false } : p);
+      } else {
+        next = prev.filter((p) => p.playerId !== disconnectedId);
       }
-      return prev.filter((p) => p.playerId !== disconnectedId);
+      lobbyPlayersRef.current = next;
+      // Broadcast updated lobby to remaining clients
+      const payload = {
+        type: "lobby",
+        players: [
+          { playerId: myPlayerIdRef.current, name: myPseudoRef.current, emoji: myEmojiRef.current, photo: myPhotoRef.current, connected: true },
+          ...next.filter((p) => p.connected !== false),
+        ],
+        slotsCount: slotsCountRef.current,
+      };
+      connsRef.current.forEach((c) => sendToConn(c, payload));
+      return next;
     });
     setPlayers((prev) => prev.map((p) => p.playerId === disconnectedId ? { ...p, connected: false } : p));
   };
@@ -1403,16 +1448,12 @@ const UndercoverApp = function UndercoverApp() {
   };
 
   // ─── HOST: lobby broadcast ───
-  // Whenever lobby players change while in lobby, broadcast to all
+  // Broadcast lobby on slotsCount or host identity change while in lobby
+  // (Joins are broadcast directly in onHostReceive case "join" for lower latency.)
   useEffect(() => {
     if (!isHost || !peerRef.current) return;
     if (screen !== "multi_lobby") return;
-    // Build full lobby including host
-    const fullLobby = [
-      { playerId: myPlayerId, name: myPseudo, emoji: myEmoji, photo: myPhoto, connected: true },
-      ...lobbyPlayers,
-    ];
-    broadcast({ type: "lobby", players: fullLobby, slotsCount });
+    broadcast(buildLobbyPayload());
   }, [lobbyPlayers, slotsCount, screen, isHost, myPseudo, myEmoji, myPhoto]);
 
   // ─── HOST: broadcast state on game state changes ───
