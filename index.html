@@ -742,6 +742,11 @@ const UndercoverApp = function UndercoverApp() {
   const lobbyPlayersRef = useRef([]);
   const slotsCountRef = useRef(5);
   const broadcastRef = useRef(null);  // will hold the broadcast function
+  // Refs to latest handlers to avoid stale closures inside PeerJS callbacks
+  const onHostReceiveRef = useRef(null);
+  const onHostClientDisconnectRef = useRef(null);
+  const onClientReceiveRef = useRef(null);
+  const onHostDisconnectRef = useRef(null);
   const isClient = playMode === "multi" && !isHost;
   // Wake lock
   const wakeLockRef = useRef(null);
@@ -1109,6 +1114,12 @@ const UndercoverApp = function UndercoverApp() {
   // Hold a stable broadcast snapshot fn ref
   useEffect(() => { broadcastRef.current = () => broadcast(buildSnapshot()); });
 
+  // Keep handler refs pointing to the latest version (avoid stale closures in PeerJS callbacks)
+  useEffect(() => { onHostReceiveRef.current = onHostReceive; });
+  useEffect(() => { onHostClientDisconnectRef.current = onHostClientDisconnect; });
+  useEffect(() => { onClientReceiveRef.current = onClientReceive; });
+  useEffect(() => { onHostDisconnectRef.current = onHostDisconnect; });
+
   // HOST: create room
   const createRoom = (cb) => {
     setNetworkError("");
@@ -1143,9 +1154,10 @@ const UndercoverApp = function UndercoverApp() {
     peer.on("connection", (conn) => {
       // Attach data handler IMMEDIATELY (before open) to avoid race where
       // client sends "join" the moment its conn opens, before host attached its listener.
-      conn.on("data", (msg) => onHostReceive(conn, msg));
-      conn.on("close", () => onHostClientDisconnect(conn));
-      conn.on("error", () => onHostClientDisconnect(conn));
+      // Use refs so the handlers always run against the latest state (no stale closures).
+      conn.on("data", (msg) => onHostReceiveRef.current && onHostReceiveRef.current(conn, msg));
+      conn.on("close", () => onHostClientDisconnectRef.current && onHostClientDisconnectRef.current(conn));
+      conn.on("error", () => onHostClientDisconnectRef.current && onHostClientDisconnectRef.current(conn));
     });
   };
 
@@ -1189,9 +1201,9 @@ const UndercoverApp = function UndercoverApp() {
         conn.send({ type: "join", playerId: myId, pseudo, emoji, photo });
         if (cb) cb();
       });
-      conn.on("data", (msg) => onClientReceive(msg));
-      conn.on("close", () => onHostDisconnect());
-      conn.on("error", () => onHostDisconnect());
+      conn.on("data", (msg) => onClientReceiveRef.current && onClientReceiveRef.current(msg));
+      conn.on("close", () => onHostDisconnectRef.current && onHostDisconnectRef.current());
+      conn.on("error", () => onHostDisconnectRef.current && onHostDisconnectRef.current());
     });
     peer.on("error", (err) => {
       console.error("Peer error", err);
@@ -1433,6 +1445,19 @@ const UndercoverApp = function UndercoverApp() {
         transition(() => setScreen("home"));
         break;
       }
+      case "host_ended_game": {
+        // Host manually ended the game — bring everyone back to the lobby
+        setPlayers([]);
+        setMySlotIdx(-1); setMyWord(null); setMyRole(null);
+        setEliminated([]); setVotes({}); setSuddenDeathVotes({}); setWinner(null);
+        setVoteCountdown(0); setIVoted(false); setISdVoted(false);
+        setTiedPlayers([]); setSuddenDeathCount(0);
+        setNetworkError("L'hôte a mis fin à la partie.");
+        transition(() => setScreen("multi_lobby"));
+        // Clear the notif after a few seconds
+        setTimeout(() => setNetworkError(""), 4000);
+        break;
+      }
       case "kicked": {
         setNetworkError("Tu as été retiré de la partie.");
         leaveRoom();
@@ -1450,6 +1475,44 @@ const UndercoverApp = function UndercoverApp() {
   const onHostDisconnect = () => {
     setNetworkError("Connexion à l'hôte perdue.");
     // Don't auto-leave, allow user to retry
+  };
+
+  // ─── HOST-ONLY: end game manually (e.g., a player left and is blocking) ───
+  const endGameMulti = () => {
+    if (!isHost) return;
+    // Notify everyone the host is ending it
+    broadcast({ type: "host_ended_game" });
+    // Reset host's own state and go back to lobby
+    setPlayers([]);
+    setMySlotIdx(-1); setMyWord(null); setMyRole(null);
+    setEliminated([]); setVotes({}); setSuddenDeathVotes({}); setWinner(null);
+    setVoteCountdown(0); setIVoted(false); setISdVoted(false);
+    setTiedPlayers([]); setSuddenDeathCount(0); setTieMessage(""); setRandomElimMessage("");
+    setSdAllSpoken(false); setAllSpoken(false);
+    setSpeakingOrder([]); setSpeakingIndex(0); setSdSpeakingOrder([]); setSdSpeakingIndex(0);
+    // Rebuild lobbyPlayers from currently-connected non-host players
+    const stillConnected = (lobbyPlayersRef.current || []).filter(p => p.connected !== false);
+    setLobbyPlayers(stillConnected);
+    lobbyPlayersRef.current = stillConnected;
+    transition(() => setScreen("multi_lobby"));
+  };
+
+  // ─── HOST-ONLY: force advance the speaking turn (e.g., speaker disconnected) ───
+  const hostForceAdvanceSpeaker = () => {
+    if (!isHost) return;
+    if (speakingIndex < speakingOrder.length - 1) setSpeakingIndex(speakingIndex + 1);
+    else setAllSpoken(true);
+  };
+  const hostForceAdvanceSdSpeaker = () => {
+    if (!isHost) return;
+    if (sdSpeakingIndex < sdSpeakingOrder.length - 1) setSdSpeakingIndex(sdSpeakingIndex + 1);
+    else {
+      const aliveIdx = players.map((p, i) => (p.alive ? i : -1)).filter((i) => i >= 0);
+      setSdVoteOrder(shuffle(aliveIdx));
+      setSdVoteIndex(0);
+      setSdVoteStep("choosing");
+      setSdAllSpoken(true);
+    }
   };
 
   // ─── HOST: lobby broadcast ───
@@ -2186,10 +2249,19 @@ const UndercoverApp = function UndercoverApp() {
       <div style={cs}><style>{cssVars}</style>
         <div style={{ width: "100%", maxWidth: 400 }}>
           {playMode === "multi" && (
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, fontSize: 11, color: "var(--text3)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, fontSize: 11, color: "var(--text3)", gap: 8 }}>
               <span style={{ fontFamily: "var(--font-mono)" }}>{isHost ? "🎯" : "🔗"} {roomCode}</span>
-              {amSpectator && <span style={{ background: "#88888822", color: "#888", padding: "3px 10px", borderRadius: 8, fontWeight: 700 }}>👻 SPECTATEUR</span>}
-              {me && me.alive && <span style={{ background: "var(--accent)22", color: "var(--accent)", padding: "3px 10px", borderRadius: 8, fontWeight: 700 }}>{me.name}</span>}
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                {amSpectator && <span style={{ background: "#88888822", color: "#888", padding: "3px 10px", borderRadius: 8, fontWeight: 700 }}>👻 SPECTATEUR</span>}
+                {me && me.alive && <span style={{ background: "var(--accent)22", color: "var(--accent)", padding: "3px 10px", borderRadius: 8, fontWeight: 700 }}>{me.name}</span>}
+                {isHost && (
+                  <button onClick={() => {
+                    if (window.confirm("Mettre fin à la partie en cours ? Tous les joueurs reviendront au lobby.")) endGameMulti();
+                  }} style={{ background: "#E6394622", color: "#E63946", border: "1px solid #E6394644", borderRadius: 8, padding: "3px 10px", fontWeight: 700, fontSize: 11, cursor: "pointer" }}>
+                    🏁 Fin
+                  </button>
+                )}
+              </div>
             </div>
           )}
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
@@ -2247,9 +2319,19 @@ const UndercoverApp = function UndercoverApp() {
                       const isMyTurn = sp && sp.playerId === myPlayerId;
                       if (!isMyTurn) {
                         return (
-                          <div style={{ marginTop: 20, padding: "14px", background: "var(--surface2)", borderRadius: 12, textAlign: "center", color: "var(--text3)", fontSize: 13 }}>
-                            ⏳ {sp?.name} doit cliquer sur son téléphone…
-                          </div>
+                          <>
+                            <div style={{ marginTop: 20, padding: "14px", background: "var(--surface2)", borderRadius: 12, textAlign: "center", color: "var(--text3)", fontSize: 13 }}>
+                              ⏳ {sp?.name} doit cliquer sur son téléphone…
+                              {sp && players[speakingOrder[speakingIndex]]?.connected === false && (
+                                <div style={{ marginTop: 6, color: "#FF6B35", fontWeight: 700 }}>⚠️ {sp.name} est déconnecté</div>
+                              )}
+                            </div>
+                            {isHost && (
+                              <button onClick={hostForceAdvanceSpeaker} style={{ ...btnSecondaryConst, marginTop: 10, width: "100%", background: "#FFD16622", color: "#FFD166", border: "1px solid #FFD16644" }}>
+                                ⏭️ Forcer le tour suivant <span style={{ fontSize: 11, opacity: .7 }}>(Hôte)</span>
+                              </button>
+                            )}
+                          </>
                         );
                       }
                       // It's my turn — I send to host (or advance directly if host)
@@ -2309,6 +2391,26 @@ const UndercoverApp = function UndercoverApp() {
                 <p style={{ textAlign: "center", fontSize: 12, color: "var(--text3)", marginBottom: 16, fontFamily: "var(--font-mono)" }}>
                   {votesDone} / {votesTotal || totalAlive} ont voté
                 </p>
+                {isHost && !showCountdown && votesDone < (votesTotal || totalAlive) && (
+                  <button onClick={() => {
+                    // If at least one vote, run resolveVote with what we have. Otherwise, abort.
+                    if (Object.keys(votes).length === 0) {
+                      if (window.confirm("Aucun vote enregistré. Veux-tu forcer une résolution aléatoire ?")) {
+                        // Pick a random alive target
+                        const targets = alive.map(p => p.idx);
+                        if (targets.length > 0) {
+                          const randomTarget = targets[Math.floor(Math.random() * targets.length)];
+                          setVotes({ [targets[0]]: randomTarget });
+                          setTimeout(() => resolveVote(), 100);
+                        }
+                      }
+                    } else {
+                      setVoteCountdown(3);
+                    }
+                  }} style={{ ...btnSecondaryConst, width: "100%", marginBottom: 12, background: "#FFD16622", color: "#FFD166", border: "1px solid #FFD16644", padding: "10px" }}>
+                    ⏭️ Forcer la résolution avec les votes actuels <span style={{ fontSize: 11, opacity: .7 }}>(Hôte)</span>
+                  </button>
+                )}
 
                 {showCountdown ? (
                   <div style={{ ...card, textAlign: "center", padding: "40px 24px", animation: "fadeUp .3s ease" }}>
@@ -2694,10 +2796,19 @@ const UndercoverApp = function UndercoverApp() {
             const me = mySlotIdx >= 0 ? players[mySlotIdx] : null;
             const amSpec = me && !me.alive;
             return (
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, fontSize: 11, color: "var(--text3)" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, fontSize: 11, color: "var(--text3)", gap: 8 }}>
                 <span style={{ fontFamily: "var(--font-mono)" }}>{isHost ? "🎯" : "🔗"} {roomCode}</span>
-                {amSpec && <span style={{ background: "#88888822", color: "#888", padding: "3px 10px", borderRadius: 8, fontWeight: 700 }}>👻 SPECTATEUR</span>}
-                {me && me.alive && <span style={{ background: "#E6394622", color: "#E63946", padding: "3px 10px", borderRadius: 8, fontWeight: 700 }}>{me.name}</span>}
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  {amSpec && <span style={{ background: "#88888822", color: "#888", padding: "3px 10px", borderRadius: 8, fontWeight: 700 }}>👻 SPECTATEUR</span>}
+                  {me && me.alive && <span style={{ background: "#E6394622", color: "#E63946", padding: "3px 10px", borderRadius: 8, fontWeight: 700 }}>{me.name}</span>}
+                  {isHost && (
+                    <button onClick={() => {
+                      if (window.confirm("Mettre fin à la partie en cours ? Tous les joueurs reviendront au lobby.")) endGameMulti();
+                    }} style={{ background: "#E6394622", color: "#E63946", border: "1px solid #E6394644", borderRadius: 8, padding: "3px 10px", fontWeight: 700, fontSize: 11, cursor: "pointer" }}>
+                      🏁 Fin
+                    </button>
+                  )}
+                </div>
               </div>
             );
           })()}
@@ -2749,9 +2860,19 @@ const UndercoverApp = function UndercoverApp() {
                   const isMyTurn = sp && sp.playerId === myPlayerId;
                   if (!isMyTurn) {
                     return (
-                      <div style={{ marginTop: 16, padding: "12px", background: "var(--surface2)", borderRadius: 12, textAlign: "center", color: "var(--text3)", fontSize: 13 }}>
-                        ⏳ {sp?.name} doit cliquer sur son téléphone…
-                      </div>
+                      <>
+                        <div style={{ marginTop: 16, padding: "12px", background: "var(--surface2)", borderRadius: 12, textAlign: "center", color: "var(--text3)", fontSize: 13 }}>
+                          ⏳ {sp?.name} doit cliquer sur son téléphone…
+                          {sp && players[sdSpeakingOrder[sdSpeakingIndex]]?.connected === false && (
+                            <div style={{ marginTop: 6, color: "#FF6B35", fontWeight: 700 }}>⚠️ {sp.name} est déconnecté</div>
+                          )}
+                        </div>
+                        {isHost && (
+                          <button onClick={hostForceAdvanceSdSpeaker} style={{ ...btnSecondaryConst, marginTop: 10, width: "100%", background: "#FFD16622", color: "#FFD166", border: "1px solid #FFD16644" }}>
+                            ⏭️ Forcer le tour suivant <span style={{ fontSize: 11, opacity: .7 }}>(Hôte)</span>
+                          </button>
+                        )}
+                      </>
                     );
                   }
                   const advance = () => {
@@ -2811,6 +2932,11 @@ const UndercoverApp = function UndercoverApp() {
                     <p style={{ textAlign: "center", fontSize: 12, color: "var(--text3)", marginBottom: 16, fontFamily: "var(--font-mono)" }}>
                       {votesDone} / {votesTotal || totalAlive} ont voté
                     </p>
+                    {isHost && !showCountdown && votesDone < (votesTotal || totalAlive) && Object.keys(suddenDeathVotes).length > 0 && (
+                      <button onClick={() => setVoteCountdown(3)} style={{ ...btnSecondaryConst, width: "100%", marginBottom: 12, background: "#FFD16622", color: "#FFD166", border: "1px solid #FFD16644", padding: "10px" }}>
+                        ⏭️ Forcer la résolution <span style={{ fontSize: 11, opacity: .7 }}>(Hôte)</span>
+                      </button>
+                    )}
                     {showCountdown ? (
                       <div style={{ ...card, textAlign: "center", padding: "40px 24px" }}>
                         <div style={{ fontSize: 12, color: "var(--text3)", marginBottom: 8, textTransform: "uppercase", letterSpacing: 2 }}>Révélation dans</div>
