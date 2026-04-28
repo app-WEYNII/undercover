@@ -816,9 +816,13 @@ const UndercoverApp = function UndercoverApp() {
     const result = generateWords(theme, difficulty, mixThemes, usedPairs);
     const words = result.pair;
     setUsedPairs((prev) => [...prev, result.key]);
-    const count = lobbyList.length;
+    // Shuffle the player list so the host doesn't systematically end up at slot 0.
+    // Roles and speaking order are independently randomized too, but shuffling here also
+    // randomizes the visible slot positions on the game/results screens.
+    const shuffledLobby = shuffle(lobbyList);
+    const count = shuffledLobby.length;
     const roles = assignRoles(count, mode, customUC, customMW);
-    const np = lobbyList.map((p, i) => ({
+    const np = shuffledLobby.map((p, i) => ({
       playerId: p.playerId,
       name: p.name,
       emoji: p.emoji,
@@ -834,6 +838,8 @@ const UndercoverApp = function UndercoverApp() {
     setSuddenDeathCount(0); setTiedPlayers([]); setSuddenDeathVotes({});
     setTieMessage(""); setRandomElimMessage("");
     setVoteCountdown(0); setIVoted(false); setISdVoted(false);
+    setAllSpoken(false); setSdAllSpoken(false);
+    setSpeakingIndex(0); setSdSpeakingIndex(0);
 
     // Send each non-host player their private role/word
     np.forEach((p, idx) => {
@@ -1073,6 +1079,61 @@ const UndercoverApp = function UndercoverApp() {
     };
   }, []);
 
+  // ─── Auto-reconnect on app foreground (iOS PWA suspends the app + drops WebRTC) ───
+  // When the user comes back to the app, if the connection to the host is dead, try to reconnect.
+  // The host side cannot easily recover (the PeerJS broker still considers the old peer registered for ~30-60s),
+  // so we only handle clients here. For the host, we try to reconnect the peer too if it's been disconnected.
+  useEffect(() => {
+    const tryReconnect = () => {
+      if (document.hidden) return;
+      if (playMode !== "multi") return;
+      if (!roomCode) return;
+      // Don't try to reconnect during fluid transitions
+      if (!["multi_lobby", "reveal", "game", "suddendeath", "elimreveal", "results"].includes(screen)) return;
+
+      if (!isHostRef.current) {
+        // Client: check the conn to host
+        const conn = hostConnRef.current;
+        const peerOk = peerRef.current && !peerRef.current.destroyed && !peerRef.current.disconnected;
+        const connOk = conn && conn.open;
+        if (!peerOk || !connOk) {
+          setNetworkError("Reconnexion en cours…");
+          // Destroy old peer
+          try { peerRef.current && peerRef.current.destroy(); } catch (e) {}
+          peerRef.current = null;
+          hostConnRef.current = null;
+          // Re-join (preserves playerId via localStorage)
+          setTimeout(() => {
+            joinRoom(roomCode, myPseudo, myEmoji, myPhoto, () => {
+              setNetworkError("");
+            });
+          }, 300);
+        }
+      } else {
+        // Host: if peer is disconnected, try peer.reconnect() first
+        if (peerRef.current && peerRef.current.disconnected && !peerRef.current.destroyed) {
+          try {
+            peerRef.current.reconnect();
+            setNetworkError("Reconnexion au serveur…");
+            setTimeout(() => setNetworkError(""), 3000);
+          } catch (e) {
+            console.error("host reconnect failed", e);
+          }
+        }
+      }
+    };
+
+    const onVis = () => { if (!document.hidden) tryReconnect(); };
+    document.addEventListener("visibilitychange", onVis);
+    window.addEventListener("focus", onVis);
+    window.addEventListener("online", onVis);
+    return () => {
+      document.removeEventListener("visibilitychange", onVis);
+      window.removeEventListener("focus", onVis);
+      window.removeEventListener("online", onVis);
+    };
+  }, [playMode, roomCode, myPseudo, myEmoji, myPhoto, screen]);
+
   // Send a single message to a specific connection (host -> one client)
   const sendToConn = (conn, msg) => {
     try { if (conn && conn.open) conn.send(msg); } catch (e) { console.error("send fail", e); }
@@ -1173,7 +1234,9 @@ const UndercoverApp = function UndercoverApp() {
       setNetworkError("Code invalide (6 caractères).");
       return;
     }
-    // Reuse stored player id for this room if any
+    // Reuse stored APPLICATION playerId for this room if any (used for slot reattachment).
+    // The NETWORK peer id is generated fresh each time so reconnects don't clash with the
+    // previous (possibly still-registered) peer on the broker.
     let storedId = "";
     try {
       const k = "wundercover_pid_" + code;
@@ -1191,7 +1254,8 @@ const UndercoverApp = function UndercoverApp() {
     isHostRef.current = false;
     myPlayerIdRef.current = myId;
 
-    const peer = new Peer(myId);
+    // Random network peer id (no custom ID) to avoid collisions on reconnect
+    const peer = new Peer();
     peerRef.current = peer;
 
     peer.on("open", () => {
@@ -1391,6 +1455,7 @@ const UndercoverApp = function UndercoverApp() {
         setMyWord(msg.word);
         setMyRole(msg.role);
         setMySlotIdx(msg.slotIdx);
+        setWordVisible(false); // Reset reveal state for the new round
         break;
       }
       case "state": {
@@ -1532,16 +1597,18 @@ const UndercoverApp = function UndercoverApp() {
   }, [
     screen, gamePhase, round,
     speakingIndex, allSpoken,
+    JSON.stringify(speakingOrder),
     eliminated.length,
     JSON.stringify(players.map((p) => [p.alive, p.connected !== false ? 1 : 0])),
     tiedPlayers.length, suddenDeathCount, tieMessage, randomElimMessage,
     sdSpeakingIndex, sdAllSpoken,
+    JSON.stringify(sdSpeakingOrder),
     elimRevealIdx, elimAnimPhase, elimWinType,
     winner,
     Object.keys(votes).length,
-    voteOrder.length,
+    JSON.stringify(voteOrder),
     Object.keys(suddenDeathVotes).length,
-    sdVoteOrder.length,
+    JSON.stringify(sdVoteOrder),
     voteCountdown,
     isHost,
   ]);
