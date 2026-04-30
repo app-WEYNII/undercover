@@ -1,4 +1,4 @@
-const CACHE_NAME = 'undercover-v15';
+const CACHE_NAME = 'undercover-v16';
 const ASSETS = [
   './',
   './index.html',
