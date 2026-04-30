@@ -106,7 +106,7 @@ const EMOJI_CATEGORIES = {
   },
 };
 
-// ─── WORD DATABASE v2 — Weighted, balanced, curated ─────────
+// ─── WORD DATABASE v5 — Removed niche (weight=1) pairs except super-héros ─────
 // Each pair: [word1, word2, weight]
 // weight: 3=universal/fun, 2=good, 1=niche
 const WORD_DB = {
@@ -121,26 +121,28 @@ const WORD_DB = {
     ],
     moyen: [
       ["Raclette","Fondue",3],["Croissant","Brioche",3],["Brownie","Cookie",3],
-      ["Guacamole","Houmous",2],["Pancake","Crêpe",3],["Risotto","Paella",2],
+      ["Guacamole","Houmous",2],["Churros","Beignet",2],["Risotto","Paella",2],
       ["Macaron","Meringue",2],["Tiramisu","Panna cotta",2],
-      ["Café","Thé",3],["Kebab","Shawarma",3],["Nuggets","Beignets de poulet",3],
+      ["Café","Thé",3],["Croque-monsieur","Club sandwich",2],["Nuggets","Beignets de poulet",3],
       ["Milkshake","Smoothie",3],["Tartare","Carpaccio",2],
       ["Muffin","Cupcake",3],["Granola","Muesli",2],["Nachos","Tacos",3],
+      ["Pancake","Crêpe",2],
     ],
     difficile: [
       ["Cappuccino","Latte",3],["Mozzarella","Burrata",2],
       ["Wasabi","Moutarde",2],["Pesto","Pistou",2],
       ["Mascarpone","Ricotta",2],["Paprika","Piment d'Espelette",2],
-      ["Bouillon","Consommé",1],["Naan","Pita",2],
-      ["Prosciutto","Jambon cru",2],["Miso","Sauce soja",2],
+      ["Naan","Pita",2],
+      ["Prosciutto","Bresaola",2],["Miso","Sauce soja",2],
       ["Biscuit","Sablé",3],["Compote","Confiture",3],
+      ["Fondant au chocolat","Moelleux au chocolat",2],
     ],
   },
   jeux_video: {
     facile: [
       ["Mario","Sonic",3],["Minecraft","Roblox",3],["FIFA","PES",3],
       ["Fortnite","PUBG",3],["Zelda","Skyrim",2],["Tetris","Puyo Puyo",2],
-      ["GTA","Saints Row",2],["Call of Duty","Battlefield",3],
+      ["Forza","Gran Turismo",2],["Call of Duty","Battlefield",3],
       ["Pokemon","Digimon",3],["Mario Kart","Crash Team Racing",2],
       ["Wii Sports","Ring Fit",2],["Angry Birds","Fruit Ninja",3],
       ["Candy Crush","Bejeweled",2],["The Sims","Animal Crossing",2],
@@ -151,16 +153,15 @@ const WORD_DB = {
       ["Resident Evil","Silent Hill",2],["God of War","Devil May Cry",2],
       ["Among Us","Town of Salem",2],["League of Legends","Dota 2",3],
       ["Assassin's Creed","Prince of Persia",2],
-      ["Rocket League","Mario Kart",3],["Apex Legends","Warzone",3],
+      ["Overcooked","Moving Out",2],["Apex Legends","Warzone",3],
       ["Fall Guys","Gang Beasts",3],["Terraria","Starbound",2],
-      ["Ratchet & Clank","Jak and Daxter",1],
       ["Red Dead Redemption","GTA",2],["Horizon","Far Cry",2],
       ["Smash Bros","Brawlhalla",2],
     ],
     difficile: [
-      ["Sekiro","Nioh",2],["Spelunky","Noita",1],
+      ["Sekiro","Nioh",2],
       ["Factorio","Satisfactory",2],["Outer Wilds","No Man's Sky",2],
-      ["Slay the Spire","Monster Train",1],["Inside","Limbo",2],
+      ["Inside","Limbo",2],
       ["Hades","Dead Cells",2],["Celeste","Hollow Knight",2],
       ["Stardew Valley","Harvest Moon",2],["Diablo","Path of Exile",2],
       ["Portal","Superliminal",2],["Subnautica","Raft",2],
@@ -172,26 +173,26 @@ const WORD_DB = {
       ["Friends","How I Met Your Mother",3],["Harry Potter","Le Seigneur des Anneaux",3],
       ["Breaking Bad","Narcos",2],["James Bond","Mission Impossible",3],
       ["Matrix","Inception",2],["Titanic","Pearl Harbor",2],
-      ["Walking Dead","Stranger Things",2],["Avengers","Justice League",3],
+      ["Walking Dead","Stranger Things",2],["Pixar","DreamWorks",3],
       ["Shrek","Madagascar",3],["Toy Story","Monstres et Cie",3],
       ["Fast & Furious","Need for Speed",2],["Le Roi Lion","Le Livre de la Jungle",3],
-      ["Netflix","Disney+",3],
+      ["Dessin animé","Film d'animation",2],
     ],
     moyen: [
       ["Stranger Things","Dark",2],["The Office","Parks and Recreation",2],
-      ["Interstellar","Gravity",2],["Peaky Blinders","Boardwalk Empire",1],
+      ["Interstellar","Gravity",2],
       ["La Casa de Papel","Ocean's Eleven",3],["Black Mirror","Twilight Zone",2],
       ["Squid Game","Alice in Borderland",3],["Naruto","Dragon Ball",3],
-      ["Game of Thrones","Vikings",3],["Casa de Papel","Braqueurs",2],
+      ["Game of Thrones","Vikings",3],["Twist final","Cliffhanger",2],
       ["Les Tuche","Camping",3],["Lupin","Gentleman cambrioleur",2],
       ["John Wick","Jason Bourne",3],["OSS 117","Austin Powers",2],
-      ["Dark Vador","Thanos",2],
+      ["Remake","Reboot",2],
     ],
     difficile: [
       ["Memento","Tenet",2],["Whiplash","Black Swan",2],
-      ["Prisoners","Zodiac",1],["Shutter Island","Gone Girl",2],
+      ["Shutter Island","Gone Girl",2],
       ["Parasite","Us",2],["Fight Club","Mr Robot",2],
-      ["Mulholland Drive","Lost Highway",1],["Seven","Silence des agneaux",2],
+      ["Seven","Silence des agneaux",2],
       ["Her","Ex Machina",2],["Joker","Taxi Driver",2],
       ["Blade Runner","Minority Report",2],["Truman Show","Matrix",2],
     ],
@@ -215,12 +216,12 @@ const WORD_DB = {
       ["Breakdance","Capoeira",2],
     ],
     difficile: [
-      ["Biathlon","Pentathlon",1],["Apnée","Plongée libre",2],
+      ["Biathlon","Ski de fond",2],["Apnée","Plongée libre",2],
       ["Luge","Bobsleigh",2],["Kendo","Escrime",2],
-      ["Tai-chi","Qi gong",1],["Jiu-jitsu","Aïkido",2],
+      ["Jiu-jitsu","Aïkido",2],
       ["Slalom","Descente",2],["Water-polo","Natation synchronisée",2],
-      ["Pentathlon","Heptathlon",1],["Skeleton","Luge",2],
-      ["Snooker","Billard",3],["Fléchettes","Tir à l'arc",2],
+      ["Plongeon","Trampoline",2],["Sprint haies","Course de fond",2],
+      ["Patinage artistique","Patinage de vitesse",2],["Fléchettes","Tir à l'arc",2],
     ],
   },
   pays_villes: {
@@ -230,7 +231,7 @@ const WORD_DB = {
       ["Australie","Nouvelle-Zélande",2],["Tokyo","Pékin",2],
       ["Maroc","Tunisie",2],["Égypte","Grèce",2],["Canada","États-Unis",3],
       ["Allemagne","France",3],["Mexique","Brésil",2],
-      ["Inde","Chine",2],["Russie","Canada",2],["Londres","New York",3],
+      ["Inde","Chine",2],["Russie","Canada",2],["Miami","Ibiza",2],
     ],
     moyen: [
       ["Barcelone","Madrid",3],["Stockholm","Oslo",2],["Dubaï","Abu Dhabi",2],
@@ -247,28 +248,28 @@ const WORD_DB = {
       ["Costa Rica","Panama",2],["Sardaigne","Sicile",2],
       ["Laos","Cambodge",2],["Croatie","Monténégro",2],
       ["Autriche","Suisse",3],["Norvège","Finlande",2],
-      ["Malte","Chypre",2],["Ouganda","Rwanda",1],
+      ["Malte","Chypre",2],
     ],
   },
   fun: {
     facile: [
-      ["Excuses de retard","Excuses d'absence",3],
+      ["Mode avion","Ne pas déranger",3],
       ["Mensonge","Vérité exagérée",2],["Lundi matin","Dimanche soir",3],
       ["WiFi faible","Batterie à 1%",3],["Réunion inutile","Email trop long",3],
       ["Selfie raté","Photo floue",2],["Chaussette perdue","Clé introuvable",3],
       ["Grasse matinée","Sieste",3],["Série en entier","Juste un épisode",3],
       ["Texto à l'ex","Appel en soirée",2],["Binge watching","Scrolling infini",3],
-      ["Micro-ondes","Je sais pas cuisiner",2],
+      ["Sieste de 5 min","Sieste de 3h",3],
       ["File d'attente","Embouteillage",2],["Pyjama toute la journée","Télétravail",3],
     ],
     moyen: [
       ["Flemme cosmique","Procrastination créative",2],
       ["Bug informatique","Erreur 404",2],["Ex bizarre","Pote relou",2],
       ["Karma instantané","Justice divine",2],
-      ["Insomnie","Grasse mat'",3],["Ghosting","Vu sans réponse",3],
+      ["Insomnie","Nuit blanche",3],["Ghosting","Vu sans réponse",3],
       ["Stalker discret","Curieux assumé",3],["Drama de groupe","Malaise entre potes",2],
       ["Compliment chelou","Drague ratée",3],["Potin juteux","Rumeur douteuse",3],
-      ["Réveil à 5h","Coucher à 5h",3],["Chance insolente","Karma positif",2],
+      ["Vidéo TikTok","Reel Instagram",3],["Chance insolente","Karma positif",2],
       ["Excuse bidon","Mensonge pieux",3],["Petit budget","Rat",3],
       ["Main character energy","Grande gueule",2],
     ],
@@ -292,19 +293,19 @@ const WORD_DB = {
       ["Venom","Carnage",3],["Darkseid","Thanos",3],
       ["Doomsday","Hulk",2],["Black Panther","Blade",2],
       ["Green Lantern","Shazam",2],["Drax","Bane",2],
-      ["Spider-Man","Batman",3],["Avengers","Justice League",3],
-      ["Deadpool","Wolverine",3],["Thanos","Dark Vador",3],
-      ["Joker","Green Goblin",2],["Harley Quinn","Catwoman",3],
-      ["Magneto","Docteur Doom",2],["Hulk","Superman",3],
+      ["Daredevil","Punisher",2],["X-Men","Les 4 Fantastiques",2],
+      ["Deadpool","Wolverine",3],["Killmonger","Ronan",2],
+      ["Ultron","Brainiac",2],["Harley Quinn","Catwoman",3],
+      ["Magneto","Docteur Doom",2],["Cyclope","Tornade",2],
     ],
     moyen: [
       ["The Flash","Quicksilver",3],["Green Arrow","Hawkeye",3],
       ["Aquaman","Namor",2],["Catwoman","Black Widow",3],
       ["Cyborg","Vision",2],["Scarlet Witch","Phoenix",3],
       ["Ant-Man","Atom",2],["Nebula","Mystique",2],
-      ["Shang-Chi","Iron Fist",2],["War Machine","Cyborg",2],
+      ["Shang-Chi","Iron Fist",2],["War Machine","Iron Patriot",2],
       ["Kingpin","Penguin",2],["Dr Fate","Dr Strange",3],
-      ["Ego","Dormammu",2],["Star-Lord","Han Solo",3],
+      ["Ego","Dormammu",2],["Star-Lord","Nova",2],
       ["Nightwing","Winter Soldier",2],["Lex Luthor","Norman Osborn",2],
       ["Hawkgirl","Falcon",2],["Black Adam","Gorr",2],
     ],
@@ -312,11 +313,11 @@ const WORD_DB = {
       ["Peacemaker","U.S. Agent",2],["Galactus","Arishem",1],
       ["Taskmaster","Deathstroke",2],["America Chavez","Miss America",1],
       ["Batgirl","Spider-Gwen",2],["Steppenwolf","Cull Obsidian",1],
-      ["Steppenwolf","Gorr",1],["Vision","Martian Manhunter",2],
+      ["Gorr","Malekith",1],["Vision","Martian Manhunter",2],
       ["Steve Rogers","Sam Wilson",2],["Moon Knight","Batman",3],
-      ["Swamp Thing","Man-Thing",2],["Red Hood","Winter Soldier",2],
+      ["Swamp Thing","Man-Thing",2],["Red Hood","Arsenal",2],
       ["Mister Fantastic","Plastic Man",2],["Power Girl","Supergirl",2],
-      ["Sentry","Hyperion",1],["Blue Beetle","Iron Man",2],
+      ["Sentry","Hyperion",1],["Blue Beetle","Green Lantern",2],
     ],
   },
 };
@@ -331,6 +332,13 @@ const shuffle = (arr) => {
   return a;
 };
 const pickRandom = (arr) => arr[Math.floor(Math.random() * arr.length)];
+
+// ─── HAPTIC FEEDBACK ─────────────────────────────────────────
+// Lightweight vibration helper. Falls back silently on devices without support
+// (desktop, iOS Safari, when permission denied).
+const haptic = (pattern = 30) => {
+  try { if (navigator.vibrate) navigator.vibrate(pattern); } catch (e) {}
+};
 
 // ─── SMART WORD ENGINE ───────────────────────────────────────
 // Weighted random pick: higher weight = more likely to be chosen
@@ -459,21 +467,47 @@ const Avatar = ({ emoji, photo, size = 40, style: sx = {} }) => {
 const Timer = ({ seconds, onEnd }) => {
   const [time, setTime] = useState(seconds);
   const [running, setRunning] = useState(false);
+  const [expired, setExpired] = useState(false);
   const ref = useRef(null);
-  useEffect(() => { setTime(seconds); setRunning(false); if (ref.current) clearInterval(ref.current); }, [seconds]);
+  useEffect(() => { setTime(seconds); setRunning(false); setExpired(false); if (ref.current) clearInterval(ref.current); }, [seconds]);
   const toggle = () => {
     if (running) { clearInterval(ref.current); setRunning(false); }
-    else { setRunning(true); ref.current = setInterval(() => { setTime((t) => { if (t <= 1) { clearInterval(ref.current); setRunning(false); onEnd?.(); return 0; } return t - 1; }); }, 1000); }
+    else {
+      setRunning(true); setExpired(false);
+      ref.current = setInterval(() => {
+        setTime((t) => {
+          if (t <= 1) {
+            clearInterval(ref.current); setRunning(false); setExpired(true);
+            haptic([100, 60, 100, 60, 200]);  // strong buzz: time's up
+            onEnd?.();
+            // Auto-clear flash after 3s so timer can be reused
+            setTimeout(() => setExpired(false), 3000);
+            return 0;
+          }
+          // Last 3 seconds — light tick
+          if (t <= 4) haptic(15);
+          return t - 1;
+        });
+      }, 1000);
+    }
   };
-  const reset = () => { clearInterval(ref.current); setTime(seconds); setRunning(false); };
+  const reset = () => { clearInterval(ref.current); setTime(seconds); setRunning(false); setExpired(false); };
   const pct = (time / seconds) * 100;
-  const color = pct > 50 ? "var(--accent)" : pct > 20 ? "#F4A261" : "#E63946";
+  const color = expired ? "#E63946" : pct > 50 ? "var(--accent)" : pct > 20 ? "#F4A261" : "#E63946";
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-      <div onClick={toggle} style={{ width: 56, height: 56, borderRadius: "50%", background: `conic-gradient(${color} ${pct}%, var(--surface2) ${pct}%)`, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+      <div onClick={toggle} style={{
+        width: 56, height: 56, borderRadius: "50%",
+        background: `conic-gradient(${color} ${pct}%, var(--surface2) ${pct}%)`,
+        display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer",
+        animation: expired ? "timerExpire 0.5s ease-in-out 3" : "none",
+        boxShadow: expired ? "0 0 30px #E6394688" : "none",
+        transition: "box-shadow .3s",
+      }}>
         <div style={{ width: 44, height: 44, borderRadius: "50%", background: "var(--surface)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, fontWeight: 700, fontFamily: "var(--font-mono)", color }}>{time}s</div>
       </div>
       <button onClick={reset} style={{ background: "none", border: "1px solid var(--border)", borderRadius: 8, color: "var(--text2)", padding: "4px 10px", cursor: "pointer", fontSize: 12 }}>↺</button>
+      <style>{`@keyframes timerExpire { 0%,100% { transform: scale(1); } 50% { transform: scale(1.15); } }`}</style>
     </div>
   );
 };
@@ -847,8 +881,14 @@ const UndercoverApp = function UndercoverApp() {
   const [iAmReadyForReveal, setIAmReadyForReveal] = useState(false);
   const [hostConnectionLost, setHostConnectionLost] = useState(false);
   const [scannerOpen, setScannerOpen] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
+  // Custom confirm modal — iOS standalone PWA blocks native window.confirm()
+  const [confirmModal, setConfirmModal] = useState(null); // { message, onConfirm } | null
+  const askConfirm = (message, onConfirm) => setConfirmModal({ message, onConfirm });
   // Ref-mirror of usedPairs — read synchronously so back-to-back rounds don't read a stale value
   const usedPairsRef = useRef([]);
+  // Guard against double-click on multi launch button
+  const launchingRef = useRef(false);
   // Refs for PeerJS
   const peerRef = useRef(null);
   const connsRef = useRef(new Map()); // host: playerId -> DataConnection
@@ -913,7 +953,8 @@ const UndercoverApp = function UndercoverApp() {
     let words;
     {
       const result = generateWords(theme, difficulty, mixThemes, usedPairsRef.current);
-      words = result.pair;
+      // Randomize which word goes to civils vs undercover (anti-meta-gaming over multiple rounds)
+      words = Math.random() < 0.5 ? result.pair : [result.pair[1], result.pair[0]];
       usedPairsRef.current = [...usedPairsRef.current, result.key];
       setUsedPairs(usedPairsRef.current);
     }
@@ -945,7 +986,8 @@ const UndercoverApp = function UndercoverApp() {
     setRevealIndex(0); setWordVisible(false);
 
     const result = generateWords(theme, difficulty, mixThemes, usedPairsRef.current);
-    const words = result.pair;
+    // Randomize which word goes to civils vs undercover (anti-meta-gaming over multiple rounds)
+    const words = Math.random() < 0.5 ? result.pair : [result.pair[1], result.pair[0]];
     // Update ref synchronously to avoid race on rapid back-to-back games
     usedPairsRef.current = [...usedPairsRef.current, result.key];
     setUsedPairs(usedPairsRef.current);
@@ -999,7 +1041,7 @@ const UndercoverApp = function UndercoverApp() {
     setVotes({});
     setGamePhase("vote");
   };
-  const castVote = (v, t) => setVotes((p) => ({ ...p, [v]: t }));
+  const castVote = (v, t) => { setVotes((p) => ({ ...p, [v]: t })); haptic(20); };
 
   const detectWin = (up) => {
     const uc = up.filter((p) => p.alive && p.role === "undercover").length;
@@ -1007,14 +1049,16 @@ const UndercoverApp = function UndercoverApp() {
     const ci = up.filter((p) => p.alive && p.role === "civil").length;
     // Civils win when all impostors are eliminated
     if (uc === 0 && mw === 0) return "civil";
-    // Undercovers win when they equal or outnumber civils
-    // Mr. White alone doesn't trigger the win — only undercovers count for the threshold
-    if (uc >= ci && uc > 0) return "undercover";
+    // Impostors (undercovers + Mr. White) win when they equal or outnumber civils.
+    // Mr. White counts here so the game can't get stuck if MW is the last imposter alive.
+    if ((uc + mw) >= ci && (uc + mw) > 0) return "undercover";
     return null;
   };
 
   const applyWin = (winType, up) => {
     setWinner(winType);
+    // Haptic punch on game end — different feel for civils win vs imposter win
+    haptic(winType === "civil" ? [60, 40, 60] : [120, 60, 120]);
     const ps = up || players;
     const s = { ...scores };
     if (winType === "civil") {
@@ -1048,6 +1092,7 @@ const UndercoverApp = function UndercoverApp() {
     const mx = Math.max(...Object.values(tally));
     const targets = Object.entries(tally).filter(([, v]) => v === mx).map(([k]) => +k);
     if (targets.length === 1) {
+      haptic([60, 30, 60]);
       const up = elim(targets[0]);
       const winType = detectWin(up);
       showElimReveal(targets[0], up, () => {
@@ -1059,6 +1104,7 @@ const UndercoverApp = function UndercoverApp() {
         }
       }, winType);
     } else {
+      haptic([40, 30, 40, 30, 40]);  // suspenseful tie buzz
       const sdOrder = speakingOrder.filter((i) => targets.includes(i));
       setTiedPlayers(targets); setSuddenDeathCount(1);
       setSuddenDeathVotes({}); setRandomElimMessage("");
@@ -1069,7 +1115,7 @@ const UndercoverApp = function UndercoverApp() {
     }
   };
 
-  const castSdVote = (v, t) => setSuddenDeathVotes((p) => ({ ...p, [v]: t }));
+  const castSdVote = (v, t) => { setSuddenDeathVotes((p) => ({ ...p, [v]: t })); haptic(20); };
 
   const resolveSd = () => {
     const tally = {}; tiedPlayers.forEach((i) => { tally[i] = 0; });
@@ -1077,6 +1123,7 @@ const UndercoverApp = function UndercoverApp() {
     const mx = Math.max(...Object.values(tally));
     const targets = Object.entries(tally).filter(([, v]) => v === mx).map(([k]) => +k);
     if (targets.length === 1) {
+      haptic([60, 30, 60]);
       const up = elim(targets[0]);
       const winType = detectWin(up);
       showElimReveal(targets[0], up, () => {
@@ -1120,6 +1167,7 @@ const UndercoverApp = function UndercoverApp() {
   // Quick mode: user taps the player to eliminate directly (no in-app vote).
   // Used for both the main vote phase and sudden-death phase when quickVote is enabled.
   const quickEliminate = (idx) => {
+    haptic([60, 30, 60]);  // dramatic double-buzz on elimination
     const up = elim(idx);
     const winType = detectWin(up);
     showElimReveal(idx, up, () => {
@@ -1155,6 +1203,32 @@ const UndercoverApp = function UndercoverApp() {
   useEffect(() => { lobbyPlayersRef.current = lobbyPlayers; }, [lobbyPlayers]);
   useEffect(() => { slotsCountRef.current = slotsCount; }, [slotsCount]);
   useEffect(() => { usedPairsRef.current = usedPairs; }, [usedPairs]);
+
+  // ─── Persist usedPairs across sessions (avoid replaying the same pair after a refresh) ───
+  // Load once on mount; flag prevents the save effect from clobbering localStorage with []
+  // before the loaded value is applied to state.
+  const usedPairsLoadedRef = useRef(false);
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("wundercover_usedpairs");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.every((x) => typeof x === "string")) {
+          usedPairsRef.current = parsed;
+          setUsedPairs(parsed);
+        }
+      }
+    } catch (e) {}
+    usedPairsLoadedRef.current = true;
+  }, []);
+  // Save on every change. Cap at the last 100 to avoid unbounded growth.
+  useEffect(() => {
+    if (!usedPairsLoadedRef.current) return;
+    try {
+      const toSave = usedPairs.slice(-100);
+      localStorage.setItem("wundercover_usedpairs", JSON.stringify(toSave));
+    } catch (e) {}
+  }, [usedPairs]);
 
   // Build the canonical lobby payload (host first, then connected joiners)
   const buildLobbyPayload = () => ({
@@ -1678,6 +1752,26 @@ const UndercoverApp = function UndercoverApp() {
     setNetworkError("Connexion à l'hôte perdue.");
   };
 
+  // ─── HOST-ONLY: kick a player from the lobby ───
+  const kickPlayer = (playerId) => {
+    if (!isHost) return;
+    if (playerId === myPlayerId) return;  // can't kick self
+    const conn = connsRef.current.get(playerId);
+    if (conn) {
+      sendToConn(conn, { type: "kicked" });
+      // Give the message a tick to actually flush before closing
+      setTimeout(() => { try { conn.close(); } catch (e) {} }, 100);
+      connsRef.current.delete(playerId);
+    }
+    // Remove from lobby and broadcast updated state
+    setLobbyPlayers((prev) => {
+      const next = prev.filter((p) => p.playerId !== playerId);
+      lobbyPlayersRef.current = next;
+      return next;
+    });
+    haptic(20);
+  };
+
   // ─── HOST-ONLY: end game manually (e.g., a player left and is blocking) ───
   const endGameMulti = () => {
     if (!isHost) return;
@@ -1821,9 +1915,82 @@ const UndercoverApp = function UndercoverApp() {
     );
   };
 
+  // ═══════════ Custom confirmation modal (replaces window.confirm — broken in iOS PWA) ═══════════
+  const ConfirmModal = () => {
+    if (!confirmModal) return null;
+    return (
+      <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.85)", backdropFilter: "blur(8px)", zIndex: 10000, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+        <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 20, padding: "28px 24px", maxWidth: 360, width: "100%", textAlign: "center", animation: "fadeUp .3s ease" }}>
+          <div style={{ fontSize: 48, marginBottom: 12 }}>⚠️</div>
+          <p style={{ fontSize: 15, color: "var(--text)", marginBottom: 24, lineHeight: 1.4 }}>{confirmModal.message}</p>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <button onClick={() => {
+              const cb = confirmModal.onConfirm;
+              setConfirmModal(null);
+              if (typeof cb === "function") cb();
+            }} style={{ ...btnPrimaryConst, width: "100%", background: "linear-gradient(135deg, #E63946, #FF6B35)" }}>Confirmer</button>
+            <button onClick={() => setConfirmModal(null)} style={{ ...btnSecondaryConst, width: "100%" }}>Annuler</button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // ═══════════ Help / Tutorial modal ═══════════
+  const HelpModal = () => {
+    if (!showHelp) return null;
+    return (
+      <div onClick={() => setShowHelp(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.85)", backdropFilter: "blur(8px)", zIndex: 10000, display: "flex", alignItems: "center", justifyContent: "center", padding: 20, overflow: "auto" }}>
+        <div onClick={(e) => e.stopPropagation()} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 20, padding: "28px 24px", maxWidth: 420, width: "100%", maxHeight: "85vh", overflowY: "auto", animation: "fadeUp .3s ease" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+            <h2 style={{ fontFamily: "var(--font-display)", fontSize: 24, fontWeight: 900, color: "var(--accent)" }}>Comment jouer ?</h2>
+            <button onClick={() => setShowHelp(false)} style={{ background: "var(--surface2)", border: "none", borderRadius: 8, width: 32, height: 32, color: "var(--text2)", fontSize: 18, cursor: "pointer", fontWeight: 700 }}>✕</button>
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 16, fontSize: 14, lineHeight: 1.5, color: "var(--text2)" }}>
+            <div>
+              <div style={{ fontSize: 16, fontWeight: 800, color: "var(--text)", marginBottom: 4 }}>🎯 Le but</div>
+              <p>Chaque joueur reçoit un mot secret. La majorité (les <strong style={{ color: "#4A90D9" }}>Civils</strong>) reçoit le même mot. <strong style={{ color: "#FF6B35" }}>L'Undercover</strong> reçoit un mot proche mais différent. Le <strong style={{ color: "#7B2FF7" }}>Mr. White</strong> (mode Extrême) ne reçoit aucun mot.</p>
+            </div>
+
+            <div>
+              <div style={{ fontSize: 16, fontWeight: 800, color: "var(--text)", marginBottom: 4 }}>🗣️ Chaque manche</div>
+              <p>À tour de rôle, chaque joueur dit <strong>UN seul mot</strong> qui décrit son mot secret — sans le révéler. Les civils essaient de se reconnaître. L'undercover bluffe pour passer inaperçu.</p>
+            </div>
+
+            <div>
+              <div style={{ fontSize: 16, fontWeight: 800, color: "var(--text)", marginBottom: 4 }}>⚖️ Le vote</div>
+              <p>Après le tour de table, tout le monde vote pour éliminer un joueur suspect. Le rôle du joueur éliminé n'est révélé que si la partie se termine.</p>
+            </div>
+
+            <div>
+              <div style={{ fontSize: 16, fontWeight: 800, color: "var(--text)", marginBottom: 4 }}>🏆 Conditions de victoire</div>
+              <p><strong style={{ color: "#4A90D9" }}>Civils</strong> gagnent si tous les imposteurs sont éliminés.<br/>
+              <strong style={{ color: "#FF6B35" }}>Imposteurs</strong> gagnent quand ils égalent le nombre de civils restants.</p>
+            </div>
+
+            <div style={{ background: "var(--surface2)", borderRadius: 12, padding: 12, border: "1px solid var(--border)" }}>
+              <div style={{ fontSize: 14, fontWeight: 800, color: "var(--text)", marginBottom: 4 }}>💡 Astuces</div>
+              <ul style={{ paddingLeft: 18, margin: 0, fontSize: 13 }}>
+                <li>Restez vagues au début — un mot trop précis vous trahit.</li>
+                <li>Écoutez attentivement, cherchez les incohérences.</li>
+                <li>En tant qu'undercover, écoutez d'abord puis ajustez.</li>
+                <li>Mr. White ne connaît aucun mot : il doit bluffer à l'aveugle en se basant sur ce que disent les autres.</li>
+              </ul>
+            </div>
+          </div>
+
+          <button onClick={() => setShowHelp(false)} style={{ ...btnPrimaryConst, width: "100%", marginTop: 20 }}>
+            Compris, on joue !
+          </button>
+        </div>
+      </div>
+    );
+  };
+
   // ═══════════ HOME ═══════════
   if (screen === "home") return (
-    <div style={cs}><style>{cssVars}</style><DisconnectOverlay />
+    <div style={cs}><style>{cssVars}</style><DisconnectOverlay /><ConfirmModal /><HelpModal />
       <div style={{ textAlign: "center", marginTop: 40 }}>
         <div style={{ fontSize: 64, marginBottom: 8 }}>🕵️</div>
         <h1 style={{ fontFamily: "var(--font-display)", fontSize: "clamp(36px,8vw,56px)", fontWeight: 900, letterSpacing: -1, lineHeight: 1.1, background: "linear-gradient(135deg, var(--accent), var(--accent2))", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>UNDERCOVER</h1>
@@ -1835,6 +2002,9 @@ const UndercoverApp = function UndercoverApp() {
         </button>
         <button onClick={() => transition(() => setScreen("multi_choose"))} style={{ ...btnPrimaryConst, background: "linear-gradient(135deg, #2EC4B6, #7B2FF7)" }}>
           🌐 Multi <span style={{ fontWeight: 400, fontSize: 13, opacity: .8 }}>— chacun son tel</span>
+        </button>
+        <button onClick={() => setShowHelp(true)} style={{ ...btnSecondaryConst, fontSize: 14, padding: "10px" }}>
+          📖 Comment jouer ?
         </button>
         {joinCode && (
           <div style={{ background: "#7B2FF722", border: "1px solid #7B2FF755", borderRadius: 12, padding: "10px 14px", fontSize: 12, color: "var(--text2)", textAlign: "center" }}>
@@ -1859,7 +2029,7 @@ const UndercoverApp = function UndercoverApp() {
 
   // ═══════════ MULTI: Choose Create or Join ═══════════
   if (screen === "multi_choose") return (
-    <div style={cs}><style>{cssVars}</style><DisconnectOverlay />
+    <div style={cs}><style>{cssVars}</style><DisconnectOverlay /><ConfirmModal />
       <button onClick={() => transition(() => setScreen("home"))} style={btnBack}>← Retour</button>
       <div style={{ textAlign: "center", marginBottom: 32, marginTop: 20 }}>
         <div style={{ fontSize: 56, marginBottom: 8 }}>🌐</div>
@@ -1889,7 +2059,7 @@ const UndercoverApp = function UndercoverApp() {
   if (screen === "multi_host_setup") {
     const canCreate = myPseudo.trim().length >= 1 && slotsCount >= 3 && slotsCount <= 12;
     return (
-      <div style={cs}><style>{cssVars}</style><DisconnectOverlay />
+      <div style={cs}><style>{cssVars}</style><DisconnectOverlay /><ConfirmModal />
         {cameraOpenFor === "self" && (
           <CameraModal
             onCapture={(url) => { setMyPhoto(url); setCameraOpenFor(null); }}
@@ -1938,7 +2108,7 @@ const UndercoverApp = function UndercoverApp() {
   if (screen === "multi_join_setup") {
     const canJoin = myPseudo.trim().length >= 1 && /^[A-Z2-9]{6}$/.test(joinCode.toUpperCase());
     return (
-      <div style={cs}><style>{cssVars}</style><DisconnectOverlay />
+      <div style={cs}><style>{cssVars}</style><DisconnectOverlay /><ConfirmModal />
         {cameraOpenFor === "self" && (
           <CameraModal
             onCapture={(url) => { setMyPhoto(url); setCameraOpenFor(null); }}
@@ -2023,7 +2193,7 @@ const UndercoverApp = function UndercoverApp() {
       } catch (e) { return roomCode; }
     })();
     return (
-      <div style={cs}><style>{cssVars}</style><DisconnectOverlay />
+      <div style={cs}><style>{cssVars}</style><DisconnectOverlay /><ConfirmModal />
         <button onClick={() => { leaveRoom(); transition(() => setScreen("home")); }} style={btnBack}>← Quitter</button>
         <div style={{ textAlign: "center", marginBottom: 12 }}>
           <div style={{ fontSize: 36, marginBottom: 4 }}>{isHost ? "🎯" : "🔗"}</div>
@@ -2043,7 +2213,45 @@ const UndercoverApp = function UndercoverApp() {
               <div style={{ marginBottom: 8 }}>
                 <QRCanvas value={shareUrl} size={140} />
               </div>
-              <p style={{ fontSize: 11, color: "var(--text3)", lineHeight: 1.4 }}>Partage le code ou scanne le QR pour rejoindre.</p>
+              <p style={{ fontSize: 11, color: "var(--text3)", lineHeight: 1.4, marginBottom: 12 }}>Partage le code ou scanne le QR pour rejoindre.</p>
+              {/* Share + Copy buttons */}
+              <div style={{ display: "flex", gap: 8 }}>
+                {typeof navigator !== "undefined" && navigator.share && (
+                  <button onClick={async () => {
+                    haptic(20);
+                    try {
+                      await navigator.share({
+                        title: "Undercover",
+                        text: `Rejoins ma partie d'Undercover ! Code : ${roomCode}`,
+                        url: shareUrl,
+                      });
+                    } catch (e) { /* user cancelled or unsupported — silently fall through */ }
+                  }} style={{ ...btnSecondaryConst, flex: 1, padding: "10px", fontSize: 13 }}>
+                    📤 Partager
+                  </button>
+                )}
+                <button onClick={async () => {
+                  haptic(20);
+                  try {
+                    if (navigator.clipboard && navigator.clipboard.writeText) {
+                      await navigator.clipboard.writeText(shareUrl);
+                    } else {
+                      // Fallback for older browsers
+                      const ta = document.createElement("textarea");
+                      ta.value = shareUrl; ta.style.position = "fixed"; ta.style.opacity = "0";
+                      document.body.appendChild(ta); ta.select(); document.execCommand("copy");
+                      document.body.removeChild(ta);
+                    }
+                    setNetworkError("✓ Lien copié dans le presse-papiers");
+                    setTimeout(() => setNetworkError(""), 2000);
+                  } catch (e) {
+                    setNetworkError("Impossible de copier. Note le code manuellement.");
+                    setTimeout(() => setNetworkError(""), 3000);
+                  }
+                }} style={{ ...btnSecondaryConst, flex: 1, padding: "10px", fontSize: 13 }}>
+                  📋 Copier
+                </button>
+              </div>
             </div>
           )}
           {/* Slots list */}
@@ -2058,6 +2266,7 @@ const UndercoverApp = function UndercoverApp() {
                 const filled = !!p;
                 const isMe = filled && p.playerId === myPlayerId;
                 const isHostSlot = filled && p.playerId === hostPlayerId;
+                const canKick = isHost && filled && !isMe && !isHostSlot;
                 return (
                   <div key={i} style={{
                     display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", borderRadius: 12,
@@ -2075,6 +2284,11 @@ const UndercoverApp = function UndercoverApp() {
                     </span>
                     {isHostSlot && <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 6, background: "#FFD16622", color: "#FFD166", fontWeight: 700 }}>HÔTE</span>}
                     {isMe && !isHostSlot && <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 6, background: "var(--accent)22", color: "var(--accent)", fontWeight: 700 }}>TOI</span>}
+                    {canKick && (
+                      <button onClick={() => askConfirm(`Retirer ${p.name} de la partie ?`, () => kickPlayer(p.playerId))}
+                        style={{ background: "#E6394622", color: "#E63946", border: "1px solid #E6394644", borderRadius: 8, width: 28, height: 28, padding: 0, cursor: "pointer", fontSize: 14, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}
+                        title={`Retirer ${p.name}`}>✕</button>
+                    )}
                   </div>
                 );
               })}
@@ -2165,7 +2379,8 @@ const UndercoverApp = function UndercoverApp() {
                 )}
               </div>
               <button onClick={() => {
-                if (!everyoneHere) return;
+                if (!everyoneHere || launchingRef.current) return;
+                launchingRef.current = true;
                 // Build players list from lobby
                 const sortedLobby = [
                   { playerId: myPlayerId, name: myPseudo, emoji: myEmoji, photo: myPhoto },
@@ -2177,7 +2392,11 @@ const UndercoverApp = function UndercoverApp() {
                 setPlayerEmojis(sortedLobby.map(p => p.emoji));
                 setPlayerPhotos(sortedLobby.map(p => p.photo));
                 // Defer startGame to next tick so state updates land
-                setTimeout(() => startGameMulti(sortedLobby), 50);
+                setTimeout(() => {
+                  startGameMulti(sortedLobby);
+                  // Release the guard after the screen has transitioned
+                  setTimeout(() => { launchingRef.current = false; }, 1000);
+                }, 50);
               }} disabled={!everyoneHere} style={{ ...btnPrimaryConst, opacity: everyoneHere ? 1 : .4, marginTop: 8 }}>
                 {everyoneHere ? "🚀 Lancer la partie" : `Attente ${slotsTotal - filledCount} joueur${slotsTotal - filledCount > 1 ? "s" : ""}…`}
               </button>
@@ -2197,7 +2416,7 @@ const UndercoverApp = function UndercoverApp() {
 
   // ═══════════ SETUP ═══════════
   if (screen === "setup") return (
-    <div style={cs}><style>{cssVars}</style><DisconnectOverlay />
+    <div style={cs}><style>{cssVars}</style><DisconnectOverlay /><ConfirmModal />
       <button onClick={() => transition(() => setScreen("home"))} style={btnBack}>← Retour</button>
       <h2 style={sectionTitle}>Configuration</h2>
       <div style={card}>
@@ -2324,7 +2543,7 @@ const UndercoverApp = function UndercoverApp() {
 
   // ═══════════ NAMES ═══════════
   if (screen === "names") return (
-    <div style={cs}><style>{cssVars}</style><DisconnectOverlay />
+    <div style={cs}><style>{cssVars}</style><DisconnectOverlay /><ConfirmModal />
       {cameraOpenFor !== null && (
         <CameraModal
           onCapture={(url) => { updatePhoto(cameraOpenFor, url); setCameraOpenFor(null); }}
@@ -2392,7 +2611,12 @@ const UndercoverApp = function UndercoverApp() {
 
               <p style={{ fontSize: 11, color: "var(--text3)", marginTop: hasDupes ? 2 : 10, textAlign: "center" }}>Les champs vides → « Joueur X »</p>
 
-              <button onClick={startGame} disabled={!canLaunch} style={{
+              <button onClick={() => {
+                if (!canLaunch || launchingRef.current) return;
+                launchingRef.current = true;
+                startGame();
+                setTimeout(() => { launchingRef.current = false; }, 1000);
+              }} disabled={!canLaunch} style={{
                 ...btnPrimaryConst, marginTop: 12, marginBottom: 40,
                 opacity: canLaunch ? 1 : 0.4, cursor: canLaunch ? "pointer" : "not-allowed",
               }}>🚀 Lancer la partie</button>
@@ -2503,7 +2727,7 @@ const UndercoverApp = function UndercoverApp() {
     const me = mySlotIdx >= 0 ? players[mySlotIdx] : null;
     const amSpectator = playMode === "multi" && me && !me.alive;
     return (
-      <div style={cs}><style>{cssVars}</style><DisconnectOverlay />
+      <div style={cs}><style>{cssVars}</style><DisconnectOverlay /><ConfirmModal />
         <div style={{ width: "100%", maxWidth: 400 }}>
           {playMode === "multi" && (
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, fontSize: 11, color: "var(--text3)", gap: 8 }}>
@@ -2513,7 +2737,7 @@ const UndercoverApp = function UndercoverApp() {
                 {me && me.alive && <span style={{ background: "var(--accent)22", color: "var(--accent)", padding: "3px 10px", borderRadius: 8, fontWeight: 700 }}>{me.name}</span>}
                 {isHost && (
                   <button onClick={() => {
-                    if (window.confirm("Mettre fin à la partie en cours ? Tous les joueurs reviendront au lobby.")) endGameMulti();
+                    askConfirm("Mettre fin à la partie en cours ? Tous les joueurs reviendront au lobby.", endGameMulti);
                   }} style={{ background: "#E6394622", color: "#E63946", border: "1px solid #E6394644", borderRadius: 8, padding: "3px 10px", fontWeight: 700, fontSize: 11, cursor: "pointer" }}>
                     🏁 Fin
                   </button>
@@ -2650,17 +2874,16 @@ const UndercoverApp = function UndercoverApp() {
                 </p>
                 {isHost && !showCountdown && votesDone < (votesTotal || totalAlive) && (
                   <button onClick={() => {
-                    // If at least one vote, run resolveVote with what we have. Otherwise, abort.
+                    // If at least one vote, run resolveVote with what we have.
+                    // Otherwise, eliminate a random player directly (no fake vote attribution).
                     if (Object.keys(votes).length === 0) {
-                      if (window.confirm("Aucun vote enregistré. Veux-tu forcer une résolution aléatoire ?")) {
-                        // Pick a random alive target
-                        const targets = alive.map(p => p.idx);
-                        if (targets.length > 0) {
-                          const randomTarget = targets[Math.floor(Math.random() * targets.length)];
-                          setVotes({ [targets[0]]: randomTarget });
-                          setTimeout(() => resolveVote(), 100);
+                      askConfirm("Aucun vote enregistré. Veux-tu forcer une résolution aléatoire ?", () => {
+                        const aliveTargets = alive.map(p => p.idx);
+                        if (aliveTargets.length > 0) {
+                          const randomTarget = aliveTargets[Math.floor(Math.random() * aliveTargets.length)];
+                          quickEliminate(randomTarget);
                         }
-                      }
+                      });
                     } else {
                       setVoteCountdown(3);
                     }
@@ -2987,7 +3210,9 @@ const UndercoverApp = function UndercoverApp() {
             <div style={{ marginTop: 24, animation: "fadeInUp .6s ease .2s both", textAlign: "center" }}>
               <div style={{ width: "100%", height: 1, background: "var(--border)", margin: "0 0 20px" }} />
               <p style={{ fontSize: 12, color: "var(--text3)", textTransform: "uppercase", letterSpacing: 2, marginBottom: 12 }}>
-                {singleUC ? "L'Undercover gagne" : "Les Undercovers gagnent"}
+                {singleUC
+                  ? (ucPlayersAlive[0]?.role === "mrwhite" ? "Mr. White gagne" : "L'Undercover gagne")
+                  : "Les imposteurs gagnent"}
               </p>
               <div style={{ display: "flex", justifyContent: "center", gap: 12, marginBottom: 8 }}>
                 {ucPlayersAlive.map((p, i) => (
@@ -3047,7 +3272,7 @@ const UndercoverApp = function UndercoverApp() {
     );
 
     return (
-      <div style={cs}><style>{cssVars}</style><DisconnectOverlay />
+      <div style={cs}><style>{cssVars}</style><DisconnectOverlay /><ConfirmModal />
         <div style={{ width: "100%", maxWidth: 420 }}>
           {playMode === "multi" && (() => {
             const me = mySlotIdx >= 0 ? players[mySlotIdx] : null;
@@ -3060,7 +3285,7 @@ const UndercoverApp = function UndercoverApp() {
                   {me && me.alive && <span style={{ background: "#E6394622", color: "#E63946", padding: "3px 10px", borderRadius: 8, fontWeight: 700 }}>{me.name}</span>}
                   {isHost && (
                     <button onClick={() => {
-                      if (window.confirm("Mettre fin à la partie en cours ? Tous les joueurs reviendront au lobby.")) endGameMulti();
+                      askConfirm("Mettre fin à la partie en cours ? Tous les joueurs reviendront au lobby.", endGameMulti);
                     }} style={{ background: "#E6394622", color: "#E63946", border: "1px solid #E6394644", borderRadius: 8, padding: "3px 10px", fontWeight: 700, fontSize: 11, cursor: "pointer" }}>
                       🏁 Fin
                     </button>
@@ -3335,7 +3560,7 @@ const UndercoverApp = function UndercoverApp() {
       ? "Les Civils gagnent !"
       : singleUC
         ? `${ucPlayers[0].name} remporte la partie !`
-        : "Les Undercovers gagnent !";
+        : "Les Imposteurs gagnent !";
     const wc = civilWin ? "var(--accent)" : "#E63946";
 
     return (
@@ -3390,7 +3615,7 @@ const UndercoverApp = function UndercoverApp() {
 
           {!civilWin && singleUC && (
             <p style={{ color: "#FF6B35", fontSize: 14, fontWeight: 600, marginTop: 8, animation: "resultsFadeIn .5s ease .3s both" }}>
-              🕵️ L'Undercover a bluffé tout le monde !
+              🕵️ {ucPlayers[0].role === "mrwhite" ? "Mr. White" : "L'Undercover"} a bluffé tout le monde !
             </p>
           )}
           {!civilWin && !singleUC && (
